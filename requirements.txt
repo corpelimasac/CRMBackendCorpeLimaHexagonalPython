@@ -1,0 +1,30 @@
+# FastAPI y servidor
+fastapi==0.104.1
+uvicorn[standard]==0.24.0
+
+# Base de datos - SQLAlchemy con MySQL
+sqlalchemy==2.0.23
+mysql-connector-python==8.1.0
+pymysql==1.1.0
+
+
+# Validación y serialización
+pydantic[email]==2.5.0
+pydantic-settings==2.0.3
+
+# Configuración
+python-dotenv==1.0.0
+
+# Seguridad (opcional)
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.1.2
+
+# Herramientas de desarrollo (opcional)
+pytest==7.4.3
+pytest-asyncio==0.21.1
+
+# Otras dependencias útiles
+python-multipart==0.0.6
+
+reportlab==4.0.4
