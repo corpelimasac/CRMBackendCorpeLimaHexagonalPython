@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BIGINT,  VARCHAR, BIT, Date, Enum, DECIMAL, ForeignKey
+from sqlalchemy import Column, Integer, BIGINT,  Date, DECIMAL, ForeignKey
 from .base import Base
 
 class ProductoDescuentoAdminModel(Base):

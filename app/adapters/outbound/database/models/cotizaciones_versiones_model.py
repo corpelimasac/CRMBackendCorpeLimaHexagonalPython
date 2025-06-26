@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BIGINT,  VARCHAR, BIT, Date, Enum, ForeignKey
+from sqlalchemy import Column, Integer, BIGINT,  VARCHAR, Date, Enum, ForeignKey
 from datetime import datetime
 from .base import Base
 

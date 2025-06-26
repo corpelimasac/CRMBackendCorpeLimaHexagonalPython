@@ -20,4 +20,4 @@ class CotizacionModel(Base):
   referencia=Column(String(250), nullable=True)
 
   # Relación con la tabla de usuarios
-  id_usuario = Column(BIGINT, ForeignKey("usuarios.id_usuario"), nullable=False)
+  id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)

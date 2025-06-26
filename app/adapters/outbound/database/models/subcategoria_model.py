@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, VARCHAR, BIT, Date, ForeignKey
+from sqlalchemy import Column, Integer, VARCHAR, Boolean, Date, ForeignKey
 from datetime import datetime
 from .base import Base
 
@@ -9,7 +9,7 @@ class SubcategoriaModel(Base):
   observacion = Column(VARCHAR(255), nullable=True)
   fecha_creacion = Column(Date, default=datetime.now, nullable=False)
   fecha_modificacion = Column(Date, default=datetime.now, onupdate=datetime.now, nullable=True)
-  estado = Column(BIT, default=True, nullable=True)
+  estado = Column(Boolean, default=True, nullable=True)
   id_categoria = Column(Integer, ForeignKey("categoria.id_categoria"), nullable=True)
 
   # Relación con la tabla de elementos especificos

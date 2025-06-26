@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, VARCHAR, BIT, BIGINT, Date, Enum
+from sqlalchemy import Column, Integer, VARCHAR, Boolean, BIGINT, Date, Enum
 from datetime import datetime
 from .base import Base
 from .intermedia_proveedor_contacto_model import intermedia_proveedor_contacto
@@ -11,7 +11,7 @@ class ProveedoresModel(Base):
   departamento = Column(VARCHAR(255), nullable=True)
   direccion = Column(VARCHAR(255), nullable=True)
   distrito = Column(VARCHAR(255), nullable=True)
-  estado = Column(BIT, default=True, nullable=True)
+  estado = Column(Boolean, default=True, nullable=True)
   fecha_actualizacion = Column(Date, default=datetime.now, nullable=True)
   fecha_registro = Column(Date, default=datetime.now, nullable=True)
   forma_entrega = Column(VARCHAR(255), nullable=True)
@@ -29,5 +29,5 @@ class ProveedoresModel(Base):
 
   # Relación con la tabla de contactos
   contactos = relationship(
-        "ContactoProveedorModel", secondary=intermedia_proveedor_contacto, back_populates="proveedores"
+        "ProveedorContactosModel", secondary=intermedia_proveedor_contacto, back_populates="proveedores"
     )

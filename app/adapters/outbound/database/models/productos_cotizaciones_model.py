@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, BIGINT,  VARCHAR, BIT, Date, Enum, DECIMAL, ForeignKey
+from sqlalchemy import Column, Integer, BIGINT,  VARCHAR, Boolean, Date, Enum, DECIMAL, ForeignKey
 from datetime import datetime
 from .base import Base
 
@@ -21,7 +21,7 @@ class ProductosCotizacionesModel(Base):
   utilidad_real = Column(DECIMAL(38,2), nullable=True)
   utilidad_uni_real = Column(DECIMAL(38,2), nullable=True)
   utilidad_uni_proyectado = Column(DECIMAL(38,2), nullable=True)
-  estado = Column(BIT, default=True, nullable=True)
+  estado = Column(Boolean, default=True, nullable=True)
   fecha_creacion = Column(Date, default=datetime.now, nullable=True)
   fecha_modificacion = Column(Date, default=datetime.now, onupdate=datetime.now, nullable=True)
 
@@ -34,7 +34,7 @@ class ProductosCotizacionesModel(Base):
   id_cotizacion_versiones = Column(BIGINT, ForeignKey("cotizaciones_versiones.id_cotizacion_versiones"), nullable=True)
 
   # Relación con la tabla de productos descuento
-  id_producto_descuento = Column(BIGINT, ForeignKey("productos_descuento.id_producto_descuento"), nullable=True)
+  id_producto_descuento = Column(BIGINT, ForeignKey("producto_descuento.id_producto_descuento"), nullable=True)
 
   # Relación con la tabla de productos descuento admin
-  id_producto_descuento_admin = Column(BIGINT, ForeignKey("productos_descuento_admin.id_producto_descuento_admin"), nullable=True)
+  id_producto_descuento_admin = Column(BIGINT, ForeignKey("producto_descuento_admin.id_producto_descuento_admin"), nullable=True)
