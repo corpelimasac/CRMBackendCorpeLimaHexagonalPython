@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, ForeignKey
+from sqlalchemy import Column, Integer, String, DateTime, Float, ForeignKey, Boolean, Date, BIGINT
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
@@ -12,7 +12,15 @@ class OrdenesCompraModel(Base):
   """
   __tablename__ = "ordenes_compra"
   id_orden = Column(Integer, primary_key=True, index=True, autoincrement=True)
-  id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=False)
+  ruta_s3 = Column(String(250), nullable=True)
+  
+  # Relación con la tabla de cotizaciones
+  id_cotizacion = Column(BIGINT, ForeignKey("cotizacion.id_cotizacion"), nullable=False)
 
-  fecha_creacion = Column(DateTime, default=datetime.utcnow, nullable=False)
-  fecha_modificacion = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+  # Relación con la tabla de usuarios
+  id_usuario = Column(BIGINT, ForeignKey("usuarios.id_usuario"), nullable=False)
+
+  version = Column(Integer, nullable=True)
+  activo = Column(Boolean, default=True, nullable=True)
+  fecha_creacion = Column(Date, default=datetime.now, nullable=True)
+  fecha_modificacion = Column(Date, default=datetime.now, onupdate=datetime.now, nullable=True)
