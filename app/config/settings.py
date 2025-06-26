@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     
     # Configuración de la base de datos
     database_url: str = Field(
-        default="mysql://root:EQlQpqrJgNXElaRCVLnJlmvYNjgQWbDX@junction.proxy.rlwy.net:31940/railway",
+        default="mysql+pymysql://root:EQlQpqrJgNXElaRCVLnJlmvYNjgQWbDX@junction.proxy.rlwy.net:31940/railway",
         env="DATABASE_URL"
     )
     database_host: str = Field(default="localhost", env="DATABASE_NAME")
