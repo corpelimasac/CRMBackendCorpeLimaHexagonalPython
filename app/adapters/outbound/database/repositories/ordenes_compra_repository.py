@@ -77,6 +77,7 @@ class OrdenesCompraRepository:
                 correlative=numero_oc,
                 id_cotizacion=datos_oc.get('id_cotizacion'),
                 id_usuario=datos_oc.get('id_usuario'),
+                ruta_s3=datos_oc.get('ruta_s3'),
                 version=datos_oc.get('version'),
                 activo=True
             )

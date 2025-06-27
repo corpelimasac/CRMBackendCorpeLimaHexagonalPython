@@ -8,6 +8,8 @@ from app.adapters.outbound.database.models.cotizaciones_versiones_model import C
 from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
 from app.shared.serializers.generator_oc.generador import Generador
 from datetime import datetime
+import os
+from app.adapters.outbound.external_services.aws.upload_file_to_s3 import upload_file_to_s3
 
 # Configuración de la API
 router = APIRouter(
@@ -80,7 +82,6 @@ async def generar_orden_compra(
     # Inicializar el repositorio de órdenes de compra
     ordenes_repo = OrdenesCompraRepository(db)
     
-
     # Ejecutar la consulta
     resultados = ordenes_repo.obtener_info_oc(request)
     
@@ -98,7 +99,7 @@ async def generar_orden_compra(
     output_folder = "excels"
     for id_contacto in request.id_contacto_proveedor:
         print(f"========== Procesando contacto número: {id_contacto} ========== ")
-            # Generar el siguiente número de orden de compra
+        # Generar el siguiente número de orden de compra
         numero_oc = ordenes_repo.generar_siguiente_numero_oc()
         if not numero_oc:
             raise HTTPException(
@@ -108,15 +109,11 @@ async def generar_orden_compra(
         print(f"Número de orden generado: {numero_oc}")
         # Filtrar los resultados para este contacto específico
         resultados_contacto = [r for r in resultados if r.IDPROVEEDORCONTACTO == id_contacto]
-        print(f"Resultados: {resultados_contacto}")
-        print(f"Resultados filtrados para contacto {id_contacto}: {len(resultados_contacto)}")
-        print(f"Resultados: {resultados_contacto[0].IGV}")
         if resultados_contacto:
             # Obtener el nombre del proveedor del primer resultado
             nombre_proveedor = resultados_contacto[0].PROVEEDOR if resultados_contacto[0].PROVEEDOR else "Proveedor"
             igv = resultados_contacto[0].IGV if resultados_contacto[0].IGV else "SIN IGV"
-            print(f"Nombre del proveedor: {nombre_proveedor}")
-            
+            #print(f"Nombre del proveedor: {nombre_proveedor}")
             # Convertir los resultados a diccionarios para el generador
             datos_para_excel = []
             for resultado in resultados_contacto:
@@ -136,10 +133,7 @@ async def generar_orden_compra(
                     'MONEDA': resultado.MONEDA,
                     'PAGO': resultado.PAGO
                 })
-            
-            print(f"Datos convertidos para Excel: {len(datos_para_excel)} registros")
-            #print(f"IGV: {resultados_contacto[0].igv}")
-            # Generar el archivo Excel para este contacto
+            #print(f"Datos convertidos para Excel: {len(datos_para_excel)} registros")
             try:
                 generador = Generador(
                     num_orden=numero_oc,
@@ -149,18 +143,35 @@ async def generar_orden_compra(
                     output_folder=output_folder
                 )
                 generador.generar_excel()
-                archivos_generados.append(f"OC {numero_oc}-{datetime.now().year} {nombre_proveedor}.xlsx")
-                print(f"Excel generado exitosamente para el contacto {id_contacto}")
+                local_path = os.path.join(output_folder, generador.output_file)
+                s3_key = f"ordenes_de_compra/{generador.output_file}"
+                url = upload_file_to_s3(
+                    local_path,
+                    s3_key,
+                    'bucketcorpe',  # Nombre del bucket
+                    'us-east-1'     # Región de AWS
+                )
+                print(f"URL del archivo subido: {url}")
+                archivos_generados.append(url)
+                print(f"Excel subido exitosamente a S3 para el contacto {id_contacto}")
+                nueva_orden = ordenes_repo.crear_orden_compra({
+                    'id_usuario': request.id_usuario,
+                    'id_cotizacion': request.id_cotizacion,
+                    'version': request.id_version,
+                    'correlative': numero_oc,
+                    'ruta_s3': url
+                })
+                print(f"Orden de compra creada: {nueva_orden.ruta_s3}")
             except Exception as e:
-                print(f"Error al generar Excel para contacto {id_contacto}: {e}")
+                print(f"Error al generar/subir Excel para contacto {id_contacto}: {e}")
                 import traceback
                 traceback.print_exc()
         else:
             print(f"No se encontraron productos para el contacto {id_contacto}")
 
     return GenerarOCResponse(
-        message=f"OC generada correctamente. Archivos creados: {', '.join(archivos_generados)}",
-        datos=[],
+        message=f"OC generada correctamente. Archivos subidos: {', '.join(archivos_generados)}",
+        datos=archivos_generados,
         total_registros=len(archivos_generados)
     )
 

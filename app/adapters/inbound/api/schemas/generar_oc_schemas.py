@@ -27,13 +27,20 @@ class GenerarOCRequest(BaseModel):
         description="ID del contacto del proveedor",
         example=[13, 14],
     )
+    id_usuario: int = Field(
+        ..., 
+        description="ID del usuario",
+        example=1,
+        gt=0
+    )
 
     class Config:
         json_schema_extra = {
             "example": {
                 "id_cotizacion": 38,
                 "id_version": 98,
-                "id_contacto_proveedor": [13, 14]
+                "id_contacto_proveedor": [13, 14],
+                "id_usuario": 8
             }
         }
 
@@ -95,7 +102,7 @@ class GenerarOCResponse(BaseModel):
     DTO para la respuesta de generar OC
     """
     message: str = Field(..., description="Mensaje de respuesta")
-    ##datos: List[ProductoOCData] = Field(..., description="Lista de productos en la OC")
+    datos: List[str] = Field(..., description="Lista de URLs de los archivos subidos")
     total_registros: int = Field(..., description="Total de registros encontrados")
 
     class Config:
