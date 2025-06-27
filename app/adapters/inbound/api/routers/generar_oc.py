@@ -162,6 +162,8 @@ async def generar_orden_compra(
                     'ruta_s3': url
                 })
                 print(f"Orden de compra creada: {nueva_orden.ruta_s3}")
+                ##Eliminar el archivo local
+                os.remove(local_path)
             except Exception as e:
                 print(f"Error al generar/subir Excel para contacto {id_contacto}: {e}")
                 import traceback
