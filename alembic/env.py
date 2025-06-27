@@ -2,7 +2,7 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config
 from sqlalchemy import pool
-
+from sqlalchemy import MetaData
 from alembic import context
 from sqlalchemy.ext.declarative import declarative_base
 
@@ -18,7 +18,7 @@ if config.config_file_name is not None:
 # add your model's MetaData object here
 # for 'autogenerate' support
 # from myapp import mymodel
-# target_metadata = mymodel.Base.metadata
+target_metadata = MetaData()
 
 # Importar el Base común que contiene todos los modelos
 try:
@@ -34,7 +34,16 @@ except ImportError as e:
 # can be acquired:
 # my_important_option = config.get_main_option("my_important_option")
 # ... etc.
+def include_object(object, name, type_, reflected, compare_to):
+    if type_ == "index" and reflected and name.startswith("ix_"):
+        return False
+    return True
 
+def include_name(name, type_, parent_names):
+    if type_ == "table":
+        return name in target_metadata.tables
+    else:
+        return True
 
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
@@ -54,6 +63,8 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object,
+        include_name=include_name,
     )
 
     with context.begin_transaction():

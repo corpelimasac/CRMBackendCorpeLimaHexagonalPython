@@ -11,11 +11,12 @@ class ProveedorContactosModel(Base):
   id_proveedor_contacto = Column(Integer, primary_key=True, index=True, autoincrement=True, nullable=False)
   celular=Column(BIGINT, nullable=True)
   correo=Column(VARCHAR(255), nullable=True)
-  observacion=Column(VARCHAR(250), nullable=True)
-  telefono=Column(VARCHAR(250), nullable=True)
-  cargo=Column(VARCHAR(250), nullable=True)
-  nombre=Column(VARCHAR(250), nullable=True)
+  observacion=Column(VARCHAR(255), nullable=True)
+  telefono=Column(VARCHAR(255), nullable=True)
+  cargo=Column(VARCHAR(255), nullable=True)
+  nombre=Column(VARCHAR(255), nullable=True)
   estado=Column(Boolean, default=True, nullable=True)
+  sexo=Column(VARCHAR(255), nullable=True)
 
   # Relación con la tabla de proveedores
   proveedores = relationship(
