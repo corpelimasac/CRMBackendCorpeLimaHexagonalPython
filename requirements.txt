@@ -29,3 +29,6 @@ pytest-asyncio==0.21.1
 python-multipart==0.0.6
 
 reportlab==4.0.4
+
+boto3
+openpyxl

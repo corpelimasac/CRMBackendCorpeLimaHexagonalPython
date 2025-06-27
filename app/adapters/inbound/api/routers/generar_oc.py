@@ -1,18 +1,13 @@
 from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
-from sqlalchemy import case, text
-from app.adapters.outbound.database.models.cotizacion_model import CotizacionModel
-from app.adapters.outbound.database.models.cotizaciones_versiones_model import CotizacionesVersionesModel
-from app.adapters.outbound.database.models.productos_cotizaciones_model import ProductosCotizacionesModel
-from app.adapters.outbound.database.models.productos_model import ProductosModel
-from app.adapters.outbound.database.models.unidad_medida_model import UnidadMedidaModel
-from app.adapters.outbound.database.models.marcas_model import MarcasModel
-from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
-from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
-from app.adapters.outbound.database.models.proveedor_detalle_model import ProveedorDetalleModel
-from app.adapters.outbound.database.models.intermedia_proveedor_contacto_model import intermedia_proveedor_contacto
+from app.adapters.outbound.database.repositories.ordenes_compra_repository import OrdenesCompraRepository
 from app.config.database import get_db
 from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest, GenerarOCResponse, ErrorResponse, ProductoOCData
+from app.adapters.outbound.database.models.cotizacion_model import CotizacionModel
+from app.adapters.outbound.database.models.cotizaciones_versiones_model import CotizacionesVersionesModel
+from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
+from app.shared.serializers.generator_oc.generador import Generador
+from datetime import datetime
 
 # Configuración de la API
 router = APIRouter(
@@ -81,72 +76,93 @@ async def generar_orden_compra(
                 status_code=404, 
                 detail=f"Contacto de proveedor con ID {id_contacto} no encontrado"
             )
+
+    # Inicializar el repositorio de órdenes de compra
+    ordenes_repo = OrdenesCompraRepository(db)
     
+    # Generar el siguiente número de orden de compra
+    numero_oc = ordenes_repo.generar_siguiente_numero_oc()
+    if not numero_oc:
+        raise HTTPException(
+            status_code=500,
+            detail="Error al generar número de orden de compra"
+        )
+    
+    print(f"Número de orden generado: {numero_oc}")
 
-
-    query = db.query(
-        CotizacionesVersionesModel.id_cotizacion.label('IDCOTIZACION'),
-        CotizacionesVersionesModel.id_cotizacion_versiones.label('IDVERSION'),
-        ProductosCotizacionesModel.cantidad.label('CANT'),
-        UnidadMedidaModel.descripcion.label('UMED'),
-        ProductosModel.nombre.label('PRODUCTO'),
-        MarcasModel.nombre.label('MARCA'),
-        ProductosModel.modelo_marca.label('MODELO'),
-        CotizacionesVersionesModel.fecha_modificacion.label('FECHA'),
-        ProveedoresModel.id_proveedor.label('IDPROVEEDOR'),
-        ProveedoresModel.razon_social.label('PROVEEDOR'),
-        ProveedorContactosModel.id_proveedor_contacto.label('IDPROVEEDORCONTACTO'),
-        ProveedorContactosModel.nombre.label('PERSONAL'),
-        ProveedorContactosModel.telefono.label('TELEFONO'),
-        ProveedorContactosModel.celular.label('CELULAR'),
-        ProveedorContactosModel.correo.label('CORREO'),
-        ProveedoresModel.direccion.label('DIRECCION'),
-        case(
-            (ProveedorDetalleModel.moneda == 'S/.', 'SOLES'),
-            else_='DOLARES'
-        ).label('MONEDA'),
-        ProveedoresModel.condiciones_pago.label('PAGO'),
-        ProveedorDetalleModel.precio_costo_unitario.label('PUNIT'),
-        ProveedorDetalleModel.igv.label('IGV')
-    ).select_from(CotizacionesVersionesModel)\
-     .join(ProductosCotizacionesModel, CotizacionesVersionesModel.id_cotizacion_versiones == ProductosCotizacionesModel.id_cotizacion_versiones)\
-     .join(ProductosModel, ProductosCotizacionesModel.id_producto == ProductosModel.id_producto)\
-     .join(UnidadMedidaModel, ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida)\
-     .join(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)\
-     .join(ProveedoresModel, ProductosModel.id_proveedor == ProveedoresModel.id_proveedor)\
-     .join(intermedia_proveedor_contacto, ProveedoresModel.id_proveedor == intermedia_proveedor_contacto.c.id_proveedor)\
-     .join(ProveedorContactosModel, intermedia_proveedor_contacto.c.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)\
-     .join(ProveedorDetalleModel, ProductosModel.id_producto == ProveedorDetalleModel.id_producto)\
-     .filter(CotizacionesVersionesModel.id_cotizacion == request.id_cotizacion)\
-     .filter(ProductosCotizacionesModel.id_cotizacion_versiones == request.id_version)\
-     .filter(ProveedorContactosModel.id_proveedor_contacto.in_(request.id_contacto_proveedor))
-
-        # Ejecutar la consulta
-    resultados = query.all()
-
+    # Ejecutar la consulta
+    resultados = ordenes_repo.obtener_info_oc(request)
+    
     if not resultados:
         raise HTTPException(
             status_code=404, 
             detail="No se encontraron datos para los parámetros especificados"
         )
-    
-# Imprimir el resultado por cada contacto de proveedor
+
+    print(f"Total de resultados obtenidos: {len(resultados)}")
+    print(f"Primer resultado: {resultados[0] if resultados else 'No hay resultados'}")
+
+    # Procesar cada contacto de proveedor y generar Excel
+    archivos_generados = []
+    output_folder = "excels"
     for id_contacto in request.id_contacto_proveedor:
-        print(f"========== Resultado del contacto número: {id_contacto} ========== ")
+        print(f"========== Procesando contacto número: {id_contacto} ========== ")
     
-    # Filtrar los resultados para este contacto específico
+        # Filtrar los resultados para este contacto específico
         resultados_contacto = [r for r in resultados if r.IDPROVEEDORCONTACTO == id_contacto]
-    
-    # Imprimir los resultados filtrados
-        for resultado in resultados_contacto:
-            print(resultado)
-
-
+        
+        print(f"Resultados filtrados para contacto {id_contacto}: {len(resultados_contacto)}")
+        
+        if resultados_contacto:
+            # Obtener el nombre del proveedor del primer resultado
+            nombre_proveedor = resultados_contacto[0].PROVEEDOR if resultados_contacto[0].PROVEEDOR else "Proveedor"
+            print(f"Nombre del proveedor: {nombre_proveedor}")
+            
+            # Convertir los resultados a diccionarios para el generador
+            datos_para_excel = []
+            for resultado in resultados_contacto:
+                datos_para_excel.append({
+                    'CANT': resultado.CANT,
+                    'UMED': resultado.UMED,
+                    'PRODUCTO': resultado.PRODUCTO,
+                    'MARCA': resultado.MARCA,
+                    'MODELO': resultado.MODELO,
+                    'P.UNIT': resultado.PUNIT,
+                    'PROVEEDOR': resultado.PROVEEDOR,
+                    'PERSONAL': resultado.PERSONAL,
+                    'CELULAR': resultado.CELULAR,
+                    'CORREO': resultado.CORREO,
+                    'DIRECCION': resultado.DIRECCION,
+                    'FECHA': resultado.FECHA,
+                    'MONEDA': resultado.MONEDA,
+                    'PAGO': resultado.PAGO
+                })
+            
+            print(f"Datos convertidos para Excel: {len(datos_para_excel)} registros")
+            
+            # Generar el archivo Excel para este contacto
+            try:
+                generador = Generador(
+                    num_orden=numero_oc,
+                    oc=datos_para_excel,
+                    proveedor=nombre_proveedor,
+                    igv=cotizacion.igv if cotizacion.igv else 0,
+                    output_folder=output_folder
+                )
+                generador.generar_excel()
+                archivos_generados.append(f"OC {numero_oc}-{datetime.now().year} {nombre_proveedor}.xlsx")
+                print(f"Excel generado exitosamente para el contacto {id_contacto}")
+            except Exception as e:
+                print(f"Error al generar Excel para contacto {id_contacto}: {e}")
+                import traceback
+                traceback.print_exc()
+        else:
+            print(f"No se encontraron productos para el contacto {id_contacto}")
 
     return GenerarOCResponse(
-        message="OC generada correctamente",
+        message=f"OC generada correctamente. Archivos creados: {', '.join(archivos_generados)}",
         datos=[],
-        total_registros=0
+        total_registros=len(archivos_generados)
     )
 
 

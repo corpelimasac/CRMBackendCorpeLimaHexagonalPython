@@ -11,7 +11,8 @@ class OrdenesCompraModel(Base):
   Mapea los campos de la entidad OrdenesCompra del dominio a columnas de la base de datos.
   """
   __tablename__ = "ordenes_compra"
-  id_orden = Column(Integer, primary_key=True, index=True, autoincrement=True)
+  id_orden= Column(Integer, primary_key=True, index=True, autoincrement=True)
+  correlative = Column(String(20), unique=True, nullable=False, index=True)
   ruta_s3 = Column(String(250), nullable=True)
   
   # Relación con la tabla de cotizaciones

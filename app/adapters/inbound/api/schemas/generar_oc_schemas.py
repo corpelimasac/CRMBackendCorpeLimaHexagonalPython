@@ -25,7 +25,7 @@ class GenerarOCRequest(BaseModel):
     id_contacto_proveedor: list[int] = Field(
         ..., 
         description="ID del contacto del proveedor",
-        example=[15, 16],
+        example=[13, 14],
     )
 
     class Config:
@@ -33,7 +33,7 @@ class GenerarOCRequest(BaseModel):
             "example": {
                 "id_cotizacion": 38,
                 "id_version": 98,
-                "id_contacto_proveedor": [15, 16]
+                "id_contacto_proveedor": [13, 14]
             }
         }
 
