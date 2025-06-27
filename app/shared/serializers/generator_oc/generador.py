@@ -38,7 +38,7 @@ class Generador:
         self.image_height = 150  # Alto en píxeles
         self.image_position = "D1"  # Posición en Excel (ej: "D1")
         
-        self.output_file = f"OC {num_orden}-{datetime.now().year} {proveedor}.xlsx"
+        self.output_file = f"{num_orden}-{datetime.now().year} {proveedor}.xlsx"
         self.subTitle=f"ORDEN DE COMPRA N° {num_orden}-{datetime.now().year}"
         self.wb = Workbook()
         self.ws = self.wb.active
@@ -98,7 +98,7 @@ class Generador:
             self.ws.cell(row=row, column=5).value = producto.get("MARCA", "")
             self.ws.cell(row=row, column=6).value = producto.get("MODELO", "")
             self.ws.cell(row=row, column=7).value = producto.get("P.UNIT", "")
-            #self.ws.cell(row=row, column=8).value = producto.get("P.UNIT", "") * producto.get("CANT", "")
+            self.ws.cell(row=row, column=8).value = producto.get("P.UNIT", "") * producto.get("CANT", "")
             self.ws.cell(row=row, column=8).value =f"=B{row}*G{row}"
             
         self.last_product_row = start_row + len(self.orden)
@@ -120,7 +120,7 @@ class Generador:
         total_formula_cell.font = Font(bold=True)  # Aplicar negrita
         total_formula_cell.alignment = Alignment(horizontal="center")  # Centrar el texto
         
-        if self.igv == 1:
+        if self.igv == "SIN IGV":
             cell_igv = self.ws.cell(row=total_row+1, column=8)
             cell_igv.value = f"=H{total_row}*0.18"
             cell_igv.font = Font(bold=True)
@@ -134,28 +134,28 @@ class Generador:
             descripcion_cell = self.ws.cell(row=total_row, column=7)
             descripcion_cell.value = "P.UNITARIO:"
             descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="right")
+            descripcion_cell.alignment = Alignment(horizontal="center")
             
             descripcion_cell = self.ws.cell(row=total_row, column=7)
             descripcion_cell.value = "P.UNITARIO:"
             descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="right")
+            descripcion_cell.alignment = Alignment(horizontal="center")
             
             descripcion_cell = self.ws.cell(row=total_row+1, column=7)
             descripcion_cell.value = "IGV:"
             descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="right")    
+            descripcion_cell.alignment = Alignment(horizontal="center")    
 
             descripcion_cell = self.ws.cell(row=total_row+2, column=7)
             descripcion_cell.value = "TOTAL:"
             descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="right")  
+            descripcion_cell.alignment = Alignment(horizontal="center")  
             descripcion_cell.border=Border(top=Side(style='thin'))  
         else:
             descripcion_cell = self.ws.cell(row=total_row, column=7)
             descripcion_cell.value = "TOTAL:"
             descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="right")          
+            descripcion_cell.alignment = Alignment(horizontal="center")          
 
         
     def agregar_footer(self):
@@ -195,26 +195,26 @@ class Generador:
                 height_pt = self.image_height * 0.75
                 img.width = width_pt
                 img.height = height_pt
-                print(f"Imagen configurada con tamaño: {self.image_width}x{self.image_height} píxeles ({width_pt:.1f}x{height_pt:.1f} puntos)")
+                ##print(f"Imagen configurada con tamaño: {self.image_width}x{self.image_height} píxeles ({width_pt:.1f}x{height_pt:.1f} puntos)")
             elif self.image_width:
                 # Solo ancho especificado, mantener proporción
                 width_pt = self.image_width * 0.75
                 img.width = width_pt
-                print(f"Imagen configurada con ancho: {self.image_width} píxeles ({width_pt:.1f} puntos)")
+                #print(f"Imagen configurada con ancho: {self.image_width} píxeles ({width_pt:.1f} puntos)")
             elif self.image_height:
                 # Solo alto especificado, mantener proporción
                 height_pt = self.image_height * 0.75
                 img.height = height_pt
-                print(f"Imagen configurada con alto: {self.image_height} píxeles ({height_pt:.1f} puntos)")
+                #print(f"Imagen configurada con alto: {self.image_height} píxeles ({height_pt:.1f} puntos)")
             else:
                 # Tamaño por defecto (pequeño)
                 img.width = 150  # 200 píxeles
                 img.height = 75  # 100 píxeles
-                print("Imagen configurada con tamaño por defecto: 200x100 píxeles")
+                #print("Imagen configurada con tamaño por defecto: 200x100 píxeles")
             
             # Agregar la imagen en la posición especificada
             self.ws.add_image(img, self.image_position)
-            print(f"Imagen agregada en posición: {self.image_position}")
+            #print(f"Imagen agregada en posición: {self.image_position}")
             
         except Exception as e:
             print(f"Advertencia: No se pudo cargar la imagen {self.image_path}: {e}")
@@ -226,7 +226,12 @@ class Generador:
 
     def generar_excel(self):
         self.aplicar_estilo_fondo()
+        self.configurar_ancho_columna(3, 11)
         self.configurar_ancho_columna(4, 75)
+        self.configurar_ancho_columna(5, 15)
+        self.configurar_ancho_columna(6, 12)
+        self.configurar_ancho_columna(7, 12)
+        self.configurar_ancho_columna(8, 12)
         self.agregar_header()
         self.agregar_cont_header()
         self.agregar_productos()

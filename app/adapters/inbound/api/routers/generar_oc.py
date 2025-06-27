@@ -80,15 +80,6 @@ async def generar_orden_compra(
     # Inicializar el repositorio de órdenes de compra
     ordenes_repo = OrdenesCompraRepository(db)
     
-    # Generar el siguiente número de orden de compra
-    numero_oc = ordenes_repo.generar_siguiente_numero_oc()
-    if not numero_oc:
-        raise HTTPException(
-            status_code=500,
-            detail="Error al generar número de orden de compra"
-        )
-    
-    print(f"Número de orden generado: {numero_oc}")
 
     # Ejecutar la consulta
     resultados = ordenes_repo.obtener_info_oc(request)
@@ -100,22 +91,30 @@ async def generar_orden_compra(
         )
 
     print(f"Total de resultados obtenidos: {len(resultados)}")
-    print(f"Primer resultado: {resultados[0] if resultados else 'No hay resultados'}")
+    ##print(f"Primer resultado: {resultados[0] if resultados else 'No hay resultados'}")
 
     # Procesar cada contacto de proveedor y generar Excel
     archivos_generados = []
     output_folder = "excels"
     for id_contacto in request.id_contacto_proveedor:
         print(f"========== Procesando contacto número: {id_contacto} ========== ")
-    
+            # Generar el siguiente número de orden de compra
+        numero_oc = ordenes_repo.generar_siguiente_numero_oc()
+        if not numero_oc:
+            raise HTTPException(
+                status_code=500,
+                detail="Error al generar número de orden de compra"
+        )
+        print(f"Número de orden generado: {numero_oc}")
         # Filtrar los resultados para este contacto específico
         resultados_contacto = [r for r in resultados if r.IDPROVEEDORCONTACTO == id_contacto]
-        
+        print(f"Resultados: {resultados_contacto}")
         print(f"Resultados filtrados para contacto {id_contacto}: {len(resultados_contacto)}")
-        
+        print(f"Resultados: {resultados_contacto[0].IGV}")
         if resultados_contacto:
             # Obtener el nombre del proveedor del primer resultado
             nombre_proveedor = resultados_contacto[0].PROVEEDOR if resultados_contacto[0].PROVEEDOR else "Proveedor"
+            igv = resultados_contacto[0].IGV if resultados_contacto[0].IGV else "SIN IGV"
             print(f"Nombre del proveedor: {nombre_proveedor}")
             
             # Convertir los resultados a diccionarios para el generador
@@ -139,14 +138,14 @@ async def generar_orden_compra(
                 })
             
             print(f"Datos convertidos para Excel: {len(datos_para_excel)} registros")
-            
+            #print(f"IGV: {resultados_contacto[0].igv}")
             # Generar el archivo Excel para este contacto
             try:
                 generador = Generador(
                     num_orden=numero_oc,
                     oc=datos_para_excel,
                     proveedor=nombre_proveedor,
-                    igv=cotizacion.igv if cotizacion.igv else 0,
+                    igv=igv,
                     output_folder=output_folder
                 )
                 generador.generar_excel()
