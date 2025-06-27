@@ -21,6 +21,10 @@ class Settings(BaseSettings):
         default="mysql+pymysql://root:EQlQpqrJgNXElaRCVLnJlmvYNjgQWbDX@junction.proxy.rlwy.net:31940/railway",
         env="DATABASE_URL"
     )
+    async_database_url: str = Field(
+        default="mysql+aiomysql://root:EQlQpqrJgNXElaRCVLnJlmvYNjgQWbDX@junction.proxy.rlwy.net:31940/railway",
+        env="ASYNC_DATABASE_URL"
+    )
     database_host: str = Field(default="localhost", env="DATABASE_NAME")
     database_port: int = Field(default=31940, env="DATABASE_PORT")
     database_user: str = Field(default="user", env="DATABASE_USER")
