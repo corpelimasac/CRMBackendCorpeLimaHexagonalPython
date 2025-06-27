@@ -187,7 +187,7 @@ class Generador:
         """
         try:
             img = Image(self.image_path)
-            
+             
             # Configurar el tamaño de la imagen si se especifica
             if self.image_width and self.image_height:
                 # Convertir píxeles a puntos (1 píxel ≈ 0.75 puntos)
