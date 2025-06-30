@@ -27,6 +27,8 @@ pytest-asyncio==0.21.1
 
 # Otras dependencias útiles
 python-multipart==0.0.6
+requests
+beautifulsoup4
 
 reportlab==4.0.4
 
