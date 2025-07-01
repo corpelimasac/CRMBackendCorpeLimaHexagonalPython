@@ -20,11 +20,11 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc"
     )
-
+    allowed_origins=settings.cors_origins.split(",")  if settings.cors_origins else [] 
     # Configurar CORS
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],  # En producción, especificar dominios exactos
+        allow_origins=allowed_origins,  # En producción, especificar dominios exactos
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
