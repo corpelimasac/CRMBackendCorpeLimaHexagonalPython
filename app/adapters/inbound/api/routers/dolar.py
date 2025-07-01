@@ -32,17 +32,25 @@ async def guardar_nuevo_valor(db: Session = Depends(get_db)):
     print("Aumentar el valor de la venta en 0.03")
     data["venta"] = data["venta"] + 0.03
     if consulta:
-        venta_consulta = consulta.venta
-        if abs(data["venta"] - venta_consulta) >= 0.03:
-            repo.create_valor_dolar(data)
-            return {"mensaje": "Datos actualizados en la base de datos.", "data": data}, 201
-        else:
-            return {"mensaje": "Dólar vigente, no es necesario actualizar.",
-                    "venta":data["venta"],
-                    "compra":data["compra"]}, 200
+        repo.create_valor_dolar(data)
+        return {"mensaje": "Precio del dolar actualizado.",
+                "venta":data["venta"],
+                "compra":data["compra"]}, 200
     else:
         repo.create_valor_dolar(data)
         return {"mensaje": "Primer registro insertado.", "data": data}, 201
+    ##if consulta:
+    ##    venta_consulta = consulta.venta
+     ##   if abs(data["venta"] - venta_consulta) >= 0.03:
+     #3       repo.create_valor_dolar(data)
+     #       return {"mensaje": "Datos actualizados en la base de datos.", "data": data}, 201
+     #   else:
+     #       return {"mensaje": "Dólar vigente, no es necesario actualizar.",
+     #           "venta":data["venta"],
+     #           "compra":data["compra"]}, 200
+    #else:
+    #    repo.create_valor_dolar(data)
+    #    return {"mensaje": "Primer registro insertado.", "data": data}, 201
 
 
 
