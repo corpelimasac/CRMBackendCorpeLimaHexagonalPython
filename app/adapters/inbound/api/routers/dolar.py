@@ -37,8 +37,7 @@ async def guardar_nuevo_valor(db: Session = Depends(get_db)):
                 "venta":data["venta"],
                 "compra":data["compra"]}, 200
     else:
-        repo.create_valor_dolar(data)
-        return {"mensaje": "Primer registro insertado.", "data": data}, 201
+        return {"mensaje": "ERROR: No se pudo obtener el valor del dólar."}, 500
     ##if consulta:
     ##    venta_consulta = consulta.venta
      ##   if abs(data["venta"] - venta_consulta) >= 0.03:
