@@ -90,7 +90,7 @@ class Generador:
         double_side = Side(border_style="double", color="000000")
         center_alignment = Alignment(horizontal='center', vertical='center')  # Alineación centrada para todo
         left_alignment = Alignment(horizontal='left', vertical='center')      # Alineación izquierda para producto
-        right_alignment = Alignment(horizontal='right', vertical='center')
+        #right_alignment = Alignment(horizontal='right', vertical='center')
 
         # Configurar encabezados
         for col_offset, encabezado in enumerate(encabezados):
@@ -99,6 +99,10 @@ class Generador:
             cell.font = Font(bold=True)
             cell.border = Border(top=double_side, bottom=double_side)
             cell.alignment = left_alignment
+            if col_offset == 4:  # Columna PRODUCTO
+                cell.alignment = left_alignment
+            else:
+                cell.alignment = center_alignment
 
         # Fijar altura de fila para encabezados
         self.ws.row_dimensions[start_row].height = 18
@@ -145,12 +149,11 @@ class Generador:
             
             # Aplicar alineación izquierda a las columnas restantes
             for col in [5, 6, 7, 8]:  # Columnas E, F, G, H
-                self.ws.cell(row=row, column=col).alignment = left_alignment
+                self.ws.cell(row=row, column=col).alignment = center_alignment
 
 
         self.last_product_row = start_row + len(self.orden)
 
-        # Configurar borde inferior
        # Configurar borde inferior
         if self.last_product_row > start_row:
             self.ws.row_dimensions[self.last_product_row].height = 25
@@ -158,17 +161,17 @@ class Generador:
                 cell = self.ws.cell(row=self.last_product_row, column=start_col + col_offset)
                 cell.border = Border(bottom=double_side)
                 if col_offset == 0:  # Columna CANT
-                    cell.alignment = left_alignment
+                    cell.alignment = center_alignment
                 elif col_offset == 1:  # Columna UND
-                    cell.alignment = left_alignment
+                    cell.alignment = center_alignment
                 elif col_offset == 2:  # Columna PRODUCTO
                     cell.alignment = left_alignment
                 elif col_offset == 5:  # Columna P.UNIT
                     cell.alignment = center_alignment
                 elif col_offset == 6:  # Columna P.TOTAL
-                    cell.alignment = right_alignment
+                    cell.alignment = center_alignment
                 else:
-                    cell.alignment = left_alignment
+                    cell.alignment = center_alignment
 
     def agregar_total(self):
         if not self.last_product_row:
@@ -182,25 +185,26 @@ class Generador:
             
         total_row = self.last_product_row + 1
         right_alignment = Alignment(horizontal='right', vertical='center')
+        center_alignment = Alignment(horizontal='center', vertical='center')
         
         # Crear celdas de totales
         total_formula_cell = self.ws.cell(row=total_row, column=8)
         total_formula_cell.value = f"=SUM(H18:H{self.last_product_row})"
         total_formula_cell.font = Font(bold=True)
-        total_formula_cell.alignment = right_alignment
+        total_formula_cell.alignment = center_alignment
         total_formula_cell.number_format = currency_format
         
         if self.igv == "SIN IGV":
             cell_igv = self.ws.cell(row=total_row+1, column=8)
             cell_igv.value = f"=H{total_row}*0.18"
             cell_igv.font = Font(bold=True)
-            cell_igv.alignment = right_alignment
+            cell_igv.alignment = center_alignment
             cell_igv.number_format = currency_format
             
             total_igv = self.ws.cell(row=total_row+2, column=8)
             total_igv.value= f"=SUM(H{total_row}:H{total_row+1})"
             total_igv.font = Font(bold=True)
-            total_igv.alignment = right_alignment
+            total_igv.alignment = center_alignment
             total_igv.number_format = currency_format
             
             # Crear descripciones
