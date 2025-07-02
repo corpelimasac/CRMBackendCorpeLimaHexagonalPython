@@ -1,7 +1,9 @@
+
 import os
 from openpyxl import Workbook
 from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
+
 from openpyxl.drawing.image import Image
 from datetime import datetime
 
@@ -30,6 +32,7 @@ class Generador:
         self.output_folder = output_folder
         self.orden = oc
         self.igv=igv
+        self.moneda="SOLES"
         
         # Configuración de la imagen
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -37,6 +40,8 @@ class Generador:
         self.image_width = 300  # Ancho en píxeles
         self.image_height = 150  # Alto en píxeles
         self.image_position = "D1"  # Posición en Excel (ej: "D1")
+
+       
         
         self.output_file = f"{num_orden}-{datetime.now().year} {proveedor}.xlsx"
         self.subTitle=f"ORDEN DE COMPRA N° {num_orden}-{datetime.now().year}"
@@ -64,98 +69,157 @@ class Generador:
         self.ws["C11"] = datos.get("PROVEEDOR", "")
         self.ws["C12"] = datos.get("PERSONAL", "")
         self.ws["C13"] = datos.get("CELULAR", "")
+        self.ws["C13"].alignment = Alignment(horizontal="left")
         self.ws["C14"] = datos.get("CORREO", "")
         self.ws["C15"] = datos.get("DIRECCION", "")
         self.ws["G11"] = datos.get("FECHA", "")
+        self.ws["G11"].alignment = Alignment(horizontal="left")
         self.ws["G12"] = datos.get("MONEDA", "")
+        self.moneda=datos.get("MONEDA", "SOLES")
         self.ws["G13"] = "INMEDIATO"
         self.ws["G14"] = datos.get("PAGO", "")
         self.ws["D8"] = self.subTitle
         self.ws["D8"].font = Font(bold=True)  
         self.ws["D8"].alignment = Alignment(horizontal="center")
-# "F12": "Moneda",
-#             "F13": "Entrega",
-#             "F14": "Pago"
 
     def agregar_productos(self):
         encabezados = ["CANT", "UND", "PRODUCTO", "MARCA", "MODELO", "P.UNIT", "P.TOTAL"]
-        start_row = 18  
-        start_col = 2  
+        start_row = 18
+        start_col = 2
 
         double_side = Side(border_style="double", color="000000")
+        center_alignment = Alignment(horizontal='center', vertical='center')  # Alineación centrada para todo
+        left_alignment = Alignment(horizontal='left', vertical='center')      # Alineación izquierda para producto
+        right_alignment = Alignment(horizontal='right', vertical='center')
 
+        # Configurar encabezados
         for col_offset, encabezado in enumerate(encabezados):
             cell = self.ws.cell(row=start_row, column=start_col + col_offset)
             cell.value = encabezado
             cell.font = Font(bold=True)
             cell.border = Border(top=double_side, bottom=double_side)
+            cell.alignment = left_alignment
 
+        # Fijar altura de fila para encabezados
+        self.ws.row_dimensions[start_row].height = 18
+
+       # Determinar formato de contabilidad según moneda
+        if self.moneda.upper() == "DOLARES":
+            currency_format = '"$"#,##0.00'  # Formato para dólares
+        else:
+            # Formato contabilidad para soles: símbolo izquierda, número derecha
+            currency_format = '"S/."#,##0.00;[Red]"S/."#,##0.00'
+
+        # Procesar productos
         for idx, producto in enumerate(self.orden, start=1):
             row = start_row + idx
-            self.ws.cell(row=row, column=2).value = producto.get("CANT", "")
-            self.ws.cell(row=row, column=3).value = producto.get("UMED", "")
-            self.ws.cell(row=row, column=4).value = producto.get("PRODUCTO", "")
+            
+            # Fijar altura para cada fila de producto
+            self.ws.row_dimensions[row].height = 30
+            
+            # Crear celdas con valores y alineaciones específicas
+            cant_cell = self.ws.cell(row=row, column=2)
+            cant_cell.value = producto.get("CANT", "")
+            cant_cell.alignment = center_alignment
+            
+            und_cell = self.ws.cell(row=row, column=3)
+            und_cell.value = producto.get("UMED", "")
+            und_cell.alignment = center_alignment
+            
+            # Producto con alineación izquierda
+            producto_cell = self.ws.cell(row=row, column=4)
+            producto_cell.value = producto.get("PRODUCTO", "")
+            producto_cell.alignment = left_alignment
+            
             self.ws.cell(row=row, column=5).value = producto.get("MARCA", "")
             self.ws.cell(row=row, column=6).value = producto.get("MODELO", "")
-            self.ws.cell(row=row, column=7).value = producto.get("P.UNIT", "")
-            self.ws.cell(row=row, column=8).value = producto.get("P.UNIT", "") * producto.get("CANT", "")
-            self.ws.cell(row=row, column=8).value =f"=B{row}*G{row}"
             
+            # P.UNIT con alineación centrada
+            punit_cell = self.ws.cell(row=row, column=7)
+            punit_cell.value = producto.get("P.UNIT", "")
+            
+            # P.TOTAL con formato de moneda
+            ptotal_cell = self.ws.cell(row=row, column=8)
+            ptotal_cell.value = f"=B{row}*G{row}"
+            ptotal_cell.number_format = currency_format
+            
+            # Aplicar alineación izquierda a las columnas restantes
+            for col in [5, 6, 7, 8]:  # Columnas E, F, G, H
+                self.ws.cell(row=row, column=col).alignment = left_alignment
+
+
         self.last_product_row = start_row + len(self.orden)
 
+        # Configurar borde inferior
+       # Configurar borde inferior
         if self.last_product_row > start_row:
+            self.ws.row_dimensions[self.last_product_row].height = 25
             for col_offset in range(len(encabezados)):
                 cell = self.ws.cell(row=self.last_product_row, column=start_col + col_offset)
                 cell.border = Border(bottom=double_side)
-    
-    
-    def agregar_total(self):
+                if col_offset == 0:  # Columna CANT
+                    cell.alignment = left_alignment
+                elif col_offset == 1:  # Columna UND
+                    cell.alignment = left_alignment
+                elif col_offset == 2:  # Columna PRODUCTO
+                    cell.alignment = left_alignment
+                elif col_offset == 5:  # Columna P.UNIT
+                    cell.alignment = center_alignment
+                elif col_offset == 6:  # Columna P.TOTAL
+                    cell.alignment = right_alignment
+                else:
+                    cell.alignment = left_alignment
 
+    def agregar_total(self):
         if not self.last_product_row:
             self.last_product_row = 18
             
+        # Determinar formato de contabilidad según moneda
+        if self.moneda.upper() == "DOLARES":
+            currency_format = '"$"#,##0.00'  # Formato para dólares
+        else:
+            currency_format = '"S/."#,##0.00;[Red]"S/."#,##0.00'
+            
         total_row = self.last_product_row + 1
+        right_alignment = Alignment(horizontal='right', vertical='center')
+        
+        # Crear celdas de totales
         total_formula_cell = self.ws.cell(row=total_row, column=8)
-        total_formula_cell.value = f"=SUM(H18:H{self.last_product_row})"  # Fórmula Excel para sumar desde H18 a H última fila
-        total_formula_cell.font = Font(bold=True)  # Aplicar negrita
-        total_formula_cell.alignment = Alignment(horizontal="center")  # Centrar el texto
+        total_formula_cell.value = f"=SUM(H18:H{self.last_product_row})"
+        total_formula_cell.font = Font(bold=True)
+        total_formula_cell.alignment = right_alignment
+        total_formula_cell.number_format = currency_format
         
         if self.igv == "SIN IGV":
             cell_igv = self.ws.cell(row=total_row+1, column=8)
             cell_igv.value = f"=H{total_row}*0.18"
             cell_igv.font = Font(bold=True)
-            cell_igv.alignment = Alignment(horizontal="center")
+            cell_igv.alignment = right_alignment
+            cell_igv.number_format = currency_format
             
             total_igv = self.ws.cell(row=total_row+2, column=8)
             total_igv.value= f"=SUM(H{total_row}:H{total_row+1})"
             total_igv.font = Font(bold=True)
-            total_igv.alignment = Alignment(horizontal="center")     
+            total_igv.alignment = right_alignment
+            total_igv.number_format = currency_format
             
-            descripcion_cell = self.ws.cell(row=total_row, column=7)
-            descripcion_cell.value = "P.UNITARIO:"
-            descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="center")
+            # Crear descripciones
+            self.ws.cell(row=total_row, column=7).value = "P.UNITARIO:"
+            self.ws.cell(row=total_row, column=7).font = Font(bold=True)
+            self.ws.cell(row=total_row, column=7).alignment = Alignment(horizontal="right")
             
-            descripcion_cell = self.ws.cell(row=total_row, column=7)
-            descripcion_cell.value = "P.UNITARIO:"
-            descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="center")
+            self.ws.cell(row=total_row+1, column=7).value = "IGV:"
+            self.ws.cell(row=total_row+1, column=7).font = Font(bold=True)
+            self.ws.cell(row=total_row+1, column=7).alignment = Alignment(horizontal="right")
             
-            descripcion_cell = self.ws.cell(row=total_row+1, column=7)
-            descripcion_cell.value = "IGV:"
-            descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="center")    
-
-            descripcion_cell = self.ws.cell(row=total_row+2, column=7)
-            descripcion_cell.value = "TOTAL:"
-            descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="center")  
-            descripcion_cell.border=Border(top=Side(style='thin'))  
+            self.ws.cell(row=total_row+2, column=7).value = "TOTAL:"
+            self.ws.cell(row=total_row+2, column=7).font = Font(bold=True)
+            self.ws.cell(row=total_row+2, column=7).alignment = Alignment(horizontal="right")
+            self.ws.cell(row=total_row+2, column=7).border = Border(top=Side(style='thin'))
         else:
-            descripcion_cell = self.ws.cell(row=total_row, column=7)
-            descripcion_cell.value = "TOTAL:"
-            descripcion_cell.font = Font(bold=True)
-            descripcion_cell.alignment = Alignment(horizontal="center")          
+            self.ws.cell(row=total_row, column=7).value = "TOTAL:"
+            self.ws.cell(row=total_row, column=7).font = Font(bold=True)
+            self.ws.cell(row=total_row, column=7).alignment = Alignment(horizontal="right")   
 
         
     def agregar_footer(self):
