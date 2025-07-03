@@ -111,26 +111,9 @@ class GenerarOCResponse(BaseModel):
                 "message": "OC generada correctamente",
                 "datos": [
                     {
-                        "IDCOTIZACION": 38,
-                        "IDVERSION": 98,
-                        "CANT": 5,
-                        "UMED": "UNIDADES",
-                        "PRODUCTO": "Laptop Dell Inspiron",
-                        "MARCA": "Dell",
-                        "MODELO": "Inspiron 15",
-                        "FECHA": "2024-01-15",
-                        "IDPROVEEDOR": 1,
-                        "PROVEEDOR": "Tecnología ABC S.A.",
-                        "IDPROVEEDORCONTACTO": 15,
-                        "PERSONAL": "Juan Pérez",
-                        "TELEFONO": "01-1234567",
-                        "CELULAR": "999888777",
-                        "CORREO": "juan.perez@abc.com",
-                        "DIRECCION": "Av. Principal 123, Lima",
-                        "MONEDA": "SOLES",
-                        "PAGO": "30 días",
-                        "PUNIT": 2500.00,
-                        "IGV": "18%"
+                        "url": "https://example.com/oc1.pdf",
+                        "nombre_archivo": "OC1.pdf"
+                        
                     }
                 ],
                 "total_registros": 1

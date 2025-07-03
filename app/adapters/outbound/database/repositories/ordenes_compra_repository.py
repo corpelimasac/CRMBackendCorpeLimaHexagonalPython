@@ -24,38 +24,6 @@ class OrdenesCompraRepository:
     def __init__(self, db: Session):
         self.db = db
     
-    def generar_siguiente_numero_oc(self) -> Optional[str]:
-        """
-        Genera el siguiente número de orden de compra basado en el último existente
-        
-        Returns:
-            str: El siguiente número de orden de compra (ej: "OC-00001")
-        """
-        try:
-            # Consulta para obtener el siguiente número de orden de compra
-            query = text("""
-                SELECT id_orden FROM ordenes_compra
-                ORDER BY id_orden DESC 
-                LIMIT 1
-            """)
-            
-            resultado = self.db.execute(query).fetchone()
-            
-            if resultado and resultado[0]:
-                siguiente_numero = resultado[0]
-            else:
-                # Si no hay órdenes existentes, empezar con 1
-                siguiente_numero = 1
-            
-            # Formatear el número con ceros a la izquierda (ej: OC-0001)
-            numero_formateado = f"OC-{siguiente_numero:05d}"
-            
-            return numero_formateado
-            
-        except Exception as e:
-            print(f"Error al generar número de OC: {e}")
-            return None
-    
     def crear_orden_compra(self, datos_oc: dict) -> Optional[OrdenesCompraModel]:
         """
         Crea una nueva orden de compra en la base de datos
@@ -67,22 +35,30 @@ class OrdenesCompraRepository:
             OrdenesCompraModel: La orden de compra creada o None si hay error
         """
         try:
-            # Generar el número de orden
-            numero_oc = self.generar_siguiente_numero_oc()
-            if not numero_oc:
-                return None
-            
-            # Crear la nueva orden de compra
+            # Crear la nueva orden de compra sin correlativo primero
             nueva_oc = OrdenesCompraModel(
-                correlative=numero_oc,
+                correlative="TEMP",  # Correlativo temporal
                 id_cotizacion=datos_oc.get('id_cotizacion'),
                 id_usuario=datos_oc.get('id_usuario'),
                 ruta_s3=datos_oc.get('ruta_s3'),
                 version=datos_oc.get('version'),
-                activo=True
+                activo=True,
+                moneda=datos_oc.get('moneda'),
+                igv=datos_oc.get('igv'),
+                total=datos_oc.get('total'),
+                id_proveedor=datos_oc.get('id_proveedor')
             )
             
             self.db.add(nueva_oc)
+            self.db.commit()
+            self.db.refresh(nueva_oc)
+            
+            # Generar el correlativo basado en el id_orden auto-generado
+            #year = nueva_oc.fecha_creacion.year if nueva_oc.fecha_creacion else 2025
+            numero_correlativo = f"OC-{nueva_oc.id_orden:05d}"
+            
+            # Actualizar la orden con el correlativo correcto
+            nueva_oc.correlative = numero_correlativo
             self.db.commit()
             self.db.refresh(nueva_oc)
             
@@ -174,7 +150,8 @@ class OrdenesCompraRepository:
                 ).label('MONEDA'),
                 ProveedoresModel.condiciones_pago.label('PAGO'),
                 ProveedorDetalleModel.precio_costo_unitario.label('PUNIT'),
-                ProveedorDetalleModel.igv.label('IGV')
+                ProveedorDetalleModel.igv.label('IGV'),
+                (ProductosCotizacionesModel.cantidad * ProveedorDetalleModel.precio_costo_unitario).label('TOTAL')
             ).select_from(CotizacionesVersionesModel)\
              .join(ProductosCotizacionesModel, CotizacionesVersionesModel.id_cotizacion_versiones == ProductosCotizacionesModel.id_cotizacion_versiones)\
              .join(ProductosModel, ProductosCotizacionesModel.id_producto == ProductosModel.id_producto)\

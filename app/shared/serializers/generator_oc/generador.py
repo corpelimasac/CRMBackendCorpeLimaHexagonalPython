@@ -19,15 +19,15 @@ class Generador:
         os.makedirs(output_folder, exist_ok=True)
         
         self.cabecera = {
-            "B11": "Señores",
-            "B12": "Atencion",
-            "B13": "Telefono",
-            "B14": "Correo",
-            "B15": "Direccion",
-            "F11": "Fecha",
-            "F12": "Moneda",
-            "F13": "Entrega",
-            "F14": "Pago"
+            "B11": "Señores :",
+            "B12": "Atencion:",
+            "B13": "Telefono:",
+            "B14": "Correo :",
+            "B15": "Direccion :",
+            "F11": "Fecha :",
+            "F12": "Moneda :",
+            "F13": "Entrega :",
+            "F14": "Pago :"
         }
         self.output_folder = output_folder
         self.orden = oc
@@ -99,7 +99,7 @@ class Generador:
             cell.font = Font(bold=True)
             cell.border = Border(top=double_side, bottom=double_side)
             cell.alignment = left_alignment
-            if col_offset == 4:  # Columna PRODUCTO
+            if col_offset == 2:  # Columna PRODUCTO
                 cell.alignment = left_alignment
             else:
                 cell.alignment = center_alignment
@@ -119,7 +119,7 @@ class Generador:
             row = start_row + idx
             
             # Fijar altura para cada fila de producto
-            self.ws.row_dimensions[row].height = 30
+            self.ws.row_dimensions[row].height = 35
             
             # Crear celdas con valores y alineaciones específicas
             cant_cell = self.ws.cell(row=row, column=2)
@@ -135,9 +135,14 @@ class Generador:
             producto_cell.value = producto.get("PRODUCTO", "")
             producto_cell.alignment = left_alignment
             
-            self.ws.cell(row=row, column=5).value = producto.get("MARCA", "")
-            self.ws.cell(row=row, column=6).value = producto.get("MODELO", "")
-            
+            marca_cell = self.ws.cell(row=row, column=5)
+            marca_cell.value = producto.get("MARCA", "")
+            marca_cell.alignment = center_alignment
+
+            modelo_cell = self.ws.cell(row=row, column=6)
+            modelo_cell.value = producto.get("MODELO", "")
+            modelo_cell.alignment = center_alignment
+
             # P.UNIT con alineación centrada
             punit_cell = self.ws.cell(row=row, column=7)
             punit_cell.value = producto.get("P.UNIT", "")
@@ -147,9 +152,6 @@ class Generador:
             ptotal_cell.value = f"=B{row}*G{row}"
             ptotal_cell.number_format = currency_format
             
-            # Aplicar alineación izquierda a las columnas restantes
-            for col in [5, 6, 7, 8]:  # Columnas E, F, G, H
-                self.ws.cell(row=row, column=col).alignment = center_alignment
 
 
         self.last_product_row = start_row + len(self.orden)
@@ -166,6 +168,10 @@ class Generador:
                     cell.alignment = center_alignment
                 elif col_offset == 2:  # Columna PRODUCTO
                     cell.alignment = left_alignment
+                elif col_offset == 3:  # Columna MARCA
+                    cell.alignment = center_alignment
+                elif col_offset == 4:  # Columna MODELO
+                    cell.alignment = center_alignment
                 elif col_offset == 5:  # Columna P.UNIT
                     cell.alignment = center_alignment
                 elif col_offset == 6:  # Columna P.TOTAL
@@ -248,6 +254,8 @@ class Generador:
         for i, line in enumerate(info_lines):
             row = info_start_row + i
             self.ws.cell(row=row, column=4).value = line
+            self.ws.cell(row=row, column=4).font = Font(bold=True)
+            self.ws.cell(row=row, column=4).font.size = 10
 
     def agregar_imagen(self):
         """

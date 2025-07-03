@@ -11,7 +11,6 @@ from datetime import datetime
 import os
 from app.adapters.outbound.external_services.aws.upload_file_to_s3 import upload_file_to_s3
 import concurrent.futures
-import threading
 import traceback
 
 # Configuración de la API
@@ -29,8 +28,7 @@ def _process_and_generate_oc(
     id_contacto: int,
     resultados: list,
     request: GenerarOCRequest,
-    output_folder: str,
-    lock: threading.Lock
+    output_folder: str
 ) -> str | None:
     """
     Procesa los datos de un contacto, genera la OC, la sube a S3 y la guarda en la BD.
@@ -48,18 +46,30 @@ def _process_and_generate_oc(
             print(f"No se encontraron productos para el contacto {id_contacto}")
             return None
 
-        # Generar el siguiente número de orden de compra de forma segura
-        with lock:
-            numero_oc = ordenes_repo.generar_siguiente_numero_oc()
-        
-        if not numero_oc:
-            print("Error al generar número de orden de compra")
-            return None
-        
-        print(f"Procesando OC {numero_oc} para el contacto {id_contacto}")
-
         nombre_proveedor = resultados_contacto[0].PROVEEDOR or "Proveedor"
         igv = resultados_contacto[0].IGV or "SIN IGV"
+
+
+
+        # Crear primero la orden de compra en la base de datos para obtener el ID auto-generado
+        orden_creada = ordenes_repo.crear_orden_compra({
+            'id_usuario': request.id_usuario,
+            'id_cotizacion': request.id_cotizacion,
+            'version': request.id_version,
+            'ruta_s3': None,  # Se actualizará después de subir a S3
+            'moneda': resultados_contacto[0].MONEDA,
+            'igv': resultados_contacto[0].IGV,
+            'total': resultados_contacto[0].TOTAL,
+            'id_proveedor': resultados_contacto[0].IDPROVEEDOR,
+        })
+        
+        if not orden_creada:
+            print("Error al crear la orden de compra en la base de datos")
+            return None
+        
+        # Obtener el correlativo generado automáticamente
+        numero_oc = orden_creada.correlative
+        print(f"Procesando OC {numero_oc} para el contacto {id_contacto} (ID: {orden_creada.id_orden})")
 
         datos_para_excel = [
             {
@@ -87,13 +97,9 @@ def _process_and_generate_oc(
         url = upload_file_to_s3(local_path, s3_key, 'bucketcorpe', 'us-east-1')
         print(f"URL del archivo subido: {url}")
 
-        ordenes_repo.crear_orden_compra({
-            'id_usuario': request.id_usuario,
-            'id_cotizacion': request.id_cotizacion,
-            'version': request.id_version,
-            'correlative': numero_oc,
-            'ruta_s3': url
-        })
+        # Actualizar la orden con la URL de S3
+        orden_creada.ruta_s3 = url
+        db.commit()
 
         os.remove(local_path)
         print(f"Excel subido y OC creada exitosamente para el contacto {id_contacto}")
@@ -180,7 +186,6 @@ async def generar_orden_compra(
 
     archivos_generados = []
     output_folder = "excels"
-    lock = threading.Lock()
 
     with concurrent.futures.ThreadPoolExecutor() as executor:
         future_to_url = {
@@ -189,8 +194,7 @@ async def generar_orden_compra(
                 id_contacto,
                 resultados,
                 request,
-                output_folder,
-                lock
+                output_folder
             ): id_contacto for id_contacto in request.id_contacto_proveedor
         }
         for future in concurrent.futures.as_completed(future_to_url):
