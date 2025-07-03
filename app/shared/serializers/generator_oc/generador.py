@@ -255,7 +255,7 @@ class Generador:
             row = info_start_row + i
             self.ws.cell(row=row, column=4).value = line
             self.ws.cell(row=row, column=4).font = Font(bold=True)
-            self.ws.cell(row=row, column=4).font.size = 10
+            #self.ws.cell(row=row, column=4).font.size = 10
 
     def agregar_imagen(self):
         """
