@@ -37,7 +37,7 @@ class PaymentRequest:
     order_id: int
     amount: Decimal
     currency: str
-    payment_method: PaymentMethod
+    payment_method: PaymentMethod 
     description: Optional[str] = None
 
 
