@@ -112,7 +112,6 @@ class OrdenesCompraRepository:
             OrdenesCompraModel.activo == True
         ).all() 
     
-
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
         """
         Obtiene información de productos para generar orden de compra
