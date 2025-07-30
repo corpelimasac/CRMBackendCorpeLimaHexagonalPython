@@ -60,7 +60,7 @@ class InvoiceExtractor:
                 self.num_coti = note.text
                 break
         else:
-            print('No se encontró la COTIZACION.')
+            print('In XMLProcessor: No se encontró la COTIZACION.')
 
     def extract_num_fact(self):
         # 1. Buscamos la etiqueta cbc:ID en el XML
@@ -69,7 +69,7 @@ class InvoiceExtractor:
             # 2. Si encontramos la etiqueta, guardamos el texto
             self.fact = fact.text
         else:
-            print('No se encontró la etiqueta cbc:ID')
+            print('In XMLProcessor: No se encontró la etiqueta cbc:ID')
 
     def extract_fecha(self):
         """Extrae la fecha de <cbc:IssueDate>, la convierte a datetime,

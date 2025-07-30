@@ -49,6 +49,12 @@ class ProductoOCData(BaseModel):
     """
     DTO para los datos de un producto en la OC
     """
+    
+    """
+    El uso de Field es para indicar que el campo es requerido y el tipo de dato que debe ser
+    El uso de los tres puntos (...) como primer argumento es la forma explícita 
+    de decirle a Pydantic que este campo es requerido.
+    """
     IDCOTIZACION: int = Field(..., description="ID de la cotización")
     IDVERSION: int = Field(..., description="ID de la versión")
     CANT: Optional[int] = Field(None, description="Cantidad del producto")

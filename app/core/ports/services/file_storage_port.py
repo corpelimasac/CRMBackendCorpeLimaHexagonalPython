@@ -11,3 +11,8 @@ class FileStoragePort(ABC):
     """Elimina un archivo temporal"""
     pass
 
+  @abstractmethod
+  async def cleanup_pdf(self, filename:str) :
+    """Elimina un archivo temporal PDF"""
+    pass
+

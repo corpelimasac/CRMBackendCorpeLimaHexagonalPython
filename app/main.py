@@ -4,7 +4,7 @@ FastAPI Application with Hexagonal Architecture
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.adapters.inbound.api.routers import users, products, orders, health, upload_xml, generar_oc, dolar
+from app.adapters.inbound.api.routers import health, generar_oc, dolar, upload_router, cotizacion_finalizada_router
 from app.config.settings import get_settings
 
 settings = get_settings()
@@ -32,16 +32,18 @@ def create_app() -> FastAPI:
 
     # Registrar rutas
     app.include_router(health.router, prefix="/api", tags=["Health"])
-    app.include_router(users.router, prefix="/api", tags=["Users"])
-    app.include_router(products.router, prefix="/api", tags=["Products"])
-    app.include_router(orders.router, prefix="/api", tags=["Orders"])
-    app.include_router(upload_xml.router, prefix="/api", tags=["Upload XML"])
+    app.include_router(upload_router.router, prefix="/api", tags=["Generar Carta Garantia"])
     app.include_router(generar_oc.router, prefix="/api", tags=["Generar OC"])
+    app.include_router(cotizacion_finalizada_router.router, prefix="/api", tags=["Cotizacion Finalizada"])
     app.include_router(dolar.router, prefix="/api", tags=["Dolar"])
     return app
 
 # Crear la instancia de la aplicación
 app = create_app()
+
+@app.get("/")
+def read_root():
+    return {"status": "API is running"}
 
 if __name__ == "__main__":
     import uvicorn

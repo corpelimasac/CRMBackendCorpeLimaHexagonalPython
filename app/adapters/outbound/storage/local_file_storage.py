@@ -15,3 +15,7 @@ class LocalFileStorageAdapter(FileStoragePort):
     async def cleanup(self, file_path: str):
         if os.path.exists(file_path):
             os.remove(file_path)
+
+    async def cleanup_pdf(self, file_path: str):
+        if os.path.exists(file_path):
+            os.remove(file_path)
