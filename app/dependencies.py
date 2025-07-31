@@ -9,6 +9,8 @@ from sqlalchemy.orm import Session
     
 # 2. Importar el Caso de Uso del core
 from app.core.use_cases.upload_invoice_use_case import UploadInvoiceUseCase
+from app.core.use_cases.proveedores.get_provider_contacts_use_case import GetProviderContactsUseCase
+from app.adapters.outbound.database.repositories.proveedores_repository import ProveedoresRepository
 
 # --- Creación de Instancias (Singletons para eficiencia) ---
 
@@ -38,3 +40,8 @@ def get_finalized_quotation_use_case(db: Session = Depends(get_db)) -> GetFinali
     """
     productos_cotizaciones_repo = ProductosCotizacionesRepository(db)
     return GetFinalizedQuotationUseCase(productos_cotizaciones_repo=productos_cotizaciones_repo)
+
+# Inyección de dependencias para los contactos de los proveedores
+def get_provider_contacts_use_case(db: Session = Depends(get_db)) -> GetProviderContactsUseCase:
+    provider_repo = ProveedoresRepository(db)
+    return GetProviderContactsUseCase(provider_repo=provider_repo)

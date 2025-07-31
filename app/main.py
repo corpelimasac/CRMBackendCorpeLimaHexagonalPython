@@ -4,7 +4,7 @@ FastAPI Application with Hexagonal Architecture
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.adapters.inbound.api.routers import health, generar_oc, dolar, upload_router, cotizacion_finalizada_router
+from app.adapters.inbound.api.routers import health, generar_oc, dolar, upload_router, cotizacion_finalizada_router, proveedores_router
 from app.config.settings import get_settings
 
 settings = get_settings()
@@ -36,6 +36,7 @@ def create_app() -> FastAPI:
     app.include_router(generar_oc.router, prefix="/api", tags=["Generar OC"])
     app.include_router(cotizacion_finalizada_router.router, prefix="/api", tags=["Cotizacion Finalizada"])
     app.include_router(dolar.router, prefix="/api", tags=["Dolar"])
+    app.include_router(proveedores_router.router, prefix="/api", tags=["Proveedores"])
     return app
 
 # Crear la instancia de la aplicación
