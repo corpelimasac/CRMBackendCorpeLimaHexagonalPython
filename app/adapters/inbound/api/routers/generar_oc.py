@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from sqlalchemy.orm import Session
 from app.adapters.outbound.database.repositories.ordenes_compra_repository import OrdenesCompraRepository
 from app.config.database import get_db, SessionLocal
-from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest, GenerarOCResponse, ErrorResponse, ProductoOCData
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest, GenerarOCResponse, ErrorResponse
 from app.adapters.outbound.database.models.cotizacion_model import CotizacionModel
 from app.adapters.outbound.database.models.cotizaciones_versiones_model import CotizacionesVersionesModel
 from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel

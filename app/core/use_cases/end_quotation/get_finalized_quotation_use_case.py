@@ -50,7 +50,8 @@ class GetFinalizedQuotationUseCase:
                         marca=row.MARCA if row.MARCA else "N/A",
                         modelo=row.MODELO if row.MODELO else "N/A",
                         punitario=float(row.PUNIT) if row.PUNIT else 0.0,
-                        ptotal=float(row.PTOTAL) if row.PTOTAL else 0.0
+                        ptotal=float(row.PTOTAL) if row.PTOTAL else 0.0,
+                        igv=row.IGV if row.IGV else "N/A"
                     )
                     productos_dtos.append(producto_dto)
                 

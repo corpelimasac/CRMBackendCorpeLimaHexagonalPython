@@ -48,6 +48,7 @@ class ProductosCotizacionesRepository(ProductosCotizacionesRepositoryPort):
                 MarcasModel.nombre.label('MARCA'),
                 ProductosModel.modelo_marca.label('MODELO'),
                 ProveedorDetalleModel.precio_costo_unitario.label('PUNIT'),
+                ProveedorDetalleModel.igv.label('IGV'),
                 (ProductosCotizacionesModel.cantidad * ProveedorDetalleModel.precio_costo_unitario).label('PTOTAL')
             ).select_from(ProductosCotizacionesModel)\
              .outerjoin(CotizacionesVersionesModel, ProductosCotizacionesModel.id_cotizacion_versiones == CotizacionesVersionesModel.id_cotizacion_versiones)\

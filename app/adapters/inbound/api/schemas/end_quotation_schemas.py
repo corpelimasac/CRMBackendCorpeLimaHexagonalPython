@@ -28,7 +28,8 @@ class ProductoDTO(BaseModel):
     modelo: str = Field(..., description="Modelo del producto")
     punitario: float = Field(..., description="Precio unitario")
     ptotal: float = Field(..., description="Precio total")
-
+    igv: str = Field(..., description="IGV")
+    
 class GetDataEndQuotationDTO(BaseModel):
     """
     DTO para la respuesta de obtener la informacion de la cotizacion finalizada
