@@ -15,6 +15,7 @@ from app.adapters.outbound.database.models.proveedor_contacto_model import Prove
 from app.adapters.outbound.database.models.proveedor_detalle_model import ProveedorDetalleModel
 from app.adapters.outbound.database.models.intermedia_proveedor_contacto_model import intermedia_proveedor_contacto
 from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
+from app.core.domain.entities.ordenes_compra import OrdenesCompra
 
 class OrdenesCompraRepository:
     """
@@ -113,6 +114,7 @@ class OrdenesCompraRepository:
         ).all() 
     
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
+        
         """
         Obtiene información de productos para generar orden de compra
         
@@ -177,3 +179,5 @@ class OrdenesCompraRepository:
             import traceback
             traceback.print_exc()
             return []
+ 
+ 

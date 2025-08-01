@@ -16,3 +16,8 @@ class FileStoragePort(ABC):
     """Elimina un archivo temporal PDF"""
     pass
 
+  @abstractmethod
+  async def saveS3(self, file_content:bytes, filename:str) -> str:
+    """Guarda un archivo en S3 y devuelve su ruta"""
+    pass
+

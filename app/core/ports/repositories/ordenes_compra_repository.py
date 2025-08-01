@@ -1,7 +1,8 @@
 from abc import ABC, abstractmethod
-from app.core.domain.entities.ordenes_compra import PurchaseOrder
+from app.core.domain.entities.ordenes_compra import OrdenesCompra
 
 class OrdenesCompraRepositoryPort(ABC):
-    @abstractmethod
-    def create_purchase_order(self, purchase_order: PurchaseOrder) -> None:
-        pass
+  @abstractmethod
+  def save(self, order: OrdenesCompra) -> OrdenesCompra:
+    """Guarda una orden de compra en la base de datos."""
+    pass
