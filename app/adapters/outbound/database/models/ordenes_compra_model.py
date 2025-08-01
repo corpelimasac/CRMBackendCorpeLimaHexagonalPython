@@ -18,6 +18,8 @@ class OrdenesCompraModel(Base):
   moneda=Column(String(255), nullable=True)
   igv=Column(String(255), nullable=True)
   total=Column(String(255), nullable=True)
+  pago=Column(String(255), nullable=True)
+  entrega=Column(String(255), nullable=True)
 
   version = Column(Integer, nullable=True)
   activo = Column(Boolean, default=True, nullable=True)
