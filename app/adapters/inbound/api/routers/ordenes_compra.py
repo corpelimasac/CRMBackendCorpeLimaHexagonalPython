@@ -7,7 +7,8 @@ from app.dependencies import get_generate_purchase_order_use_case
 router = APIRouter(prefix="/ordenes-compra", tags=["Ordenes de Compra"])
 
 @router.post("/generar")
-def create_order(order: OrdenesCompraRequest, use_case: GenerarOrdenCompra = Depends(get_generate_purchase_order_use_case)):
-    urls = use_case.execute(order)
+async def create_order(order: OrdenesCompraRequest, use_case: GenerarOrdenCompra = Depends(get_generate_purchase_order_use_case)):
+    print("Inicio de la orden de compra")
+    urls = await use_case.execute(order)
     return {"status": "Órdenes de compra generadas", "urls": urls}
 

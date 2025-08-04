@@ -43,11 +43,50 @@ class Generador:
 
        
         
-        self.output_file = f"{num_orden}-{datetime.now().year} {proveedor}.xlsx"
-        self.subTitle=f"ORDEN DE COMPRA N° {num_orden}-{datetime.now().year}"
+        # Truncar el nombre del proveedor para evitar nombres de archivo muy largos
+        proveedor_truncado = self._truncate_proveedor_name(proveedor)
+        self.output_file = f"{num_orden}-{datetime.now().year} {proveedor_truncado}.xlsx"
+        self.subTitle=f"ORDEN DE COMPRA N° {num_orden}"
         self.wb = Workbook()
         self.ws = self.wb.active
         self.last_product_row = None 
+
+    def _truncate_proveedor_name(self, proveedor: str, max_length: int = 30) -> str:
+        """
+        Trunca el nombre del proveedor de manera inteligente para evitar nombres de archivo muy largos.
+        Mantiene las palabras más importantes y limita la longitud total.
+        """
+        if len(proveedor) <= max_length:
+            return proveedor
+        
+        # Dividir por palabras y filtrar palabras menos importantes
+        palabras = proveedor.split()
+        palabras_filtradas = []
+        
+        # Palabras que se pueden omitir para acortar el nombre
+        palabras_a_omitir = {
+            'S.A.C.', 'S.A.C', 'S.A.', 'S.A', 'S.R.L.', 'S.R.L', 'E.I.R.L.', 'E.I.R.L',
+            'SOCIEDAD', 'ANONIMA', 'CERRADA', 'LIMITADA', 'EMPRESA', 'INDIVIDUAL', 
+            'RESPONSABILIDAD', 'DE', 'LA', 'EL', 'LOS', 'LAS', 'Y', 'CON', 'PARA',
+            'COMERCIALIZADORA', 'DISTRIBUIDORA', 'IMPORTADORA', 'EXPORTADORA'
+        }
+        
+        # Primero agregar palabras importantes (las primeras y las que no están en la lista)
+        for palabra in palabras:
+            palabra_upper = palabra.upper().strip('.,')
+            if palabra_upper not in palabras_a_omitir or len(palabras_filtradas) < 3:
+                palabras_filtradas.append(palabra)
+                # Si ya alcanzamos una longitud razonable, parar
+                if len(' '.join(palabras_filtradas)) >= max_length - 5:
+                    break
+        
+        nombre_truncado = ' '.join(palabras_filtradas)
+        
+        # Si aún es muy largo, truncar directamente
+        if len(nombre_truncado) > max_length:
+            nombre_truncado = nombre_truncado[:max_length-3] + "..."
+        
+        return nombre_truncado 
 
     def aplicar_estilo_fondo(self):
         white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")

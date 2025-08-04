@@ -1,4 +1,5 @@
 from app.adapters.outbound.storage.local_file_storage import LocalFileStorageAdapter
+from app.adapters.outbound.storage.aws_file_storage import AWSFileStorage
 from app.adapters.outbound.invoice.xml_to_pdf_processor import XmlToPdfProcessorAdapter
 from app.core.use_cases.end_quotation.get_finalized_quotation_use_case import GetFinalizedQuotationUseCase
 from app.adapters.outbound.database.repositories.productos_cotizaciones_repository import ProductosCotizacionesRepository
@@ -13,6 +14,8 @@ from app.core.use_cases.proveedores.get_provider_contacts_use_case import GetPro
 from app.adapters.outbound.database.repositories.proveedores_repository import ProveedoresRepository
 from app.core.use_cases.generar_oc.generar_orden_compra import GenerarOrdenCompra
 from app.adapters.outbound.database.repositories.ordenes_compra_repository1 import OrdenesCompraRepository
+from app.adapters.outbound.database.repositories.cotizacion_version_repository import CotizacionVersionesRepository
+from app.adapters.outbound.excel.openpyxl_excel_generator import OpenPyXLExcelGenerator
 
 # --- Creación de Instancias (Singletons para eficiencia) ---
 
@@ -50,10 +53,18 @@ def get_provider_contacts_use_case(db: Session = Depends(get_db)) -> GetProvider
 
 # Inyección de dependencias para la generación de ordenes de compra
 def get_generate_purchase_order_use_case(db: Session = Depends(get_db)) -> GenerarOrdenCompra:
+    print("Iniciando inyección de dependencias")
+    ordenes_compra_repo = OrdenesCompraRepository(db)
+    
+    # Temporal: usar almacenamiento local mientras debugueamos AWS
+    # Para usar AWS: file_storage=AWSFileStorage()  
+    # Para usar local: file_storage=LocalFileStorageAdapter()
+    
     return GenerarOrdenCompra(
-       ordenes_compra_repo=OrdenesCompraRepository(db),
-    #    cotizacion_repo=SQLAlchemyCotizacionRepository(db),
-    #    excel_generator=OpenPyXLExcelGenerator(),
-    #    file_storage=S3StorageAdapter()
+       ordenes_compra_repo=ordenes_compra_repo,
+       cotizacion_version_repo=CotizacionVersionesRepository(db),
+       excel_generator=OpenPyXLExcelGenerator(ordenes_compra_repo),  
+       file_storage=AWSFileStorage()  
+       #file_storage=LocalFileStorageAdapter("./temp_files/ordenes_compra")
     )
     

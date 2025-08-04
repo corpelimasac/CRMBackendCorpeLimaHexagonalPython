@@ -1,52 +1,151 @@
-from app.core.domain.entities.ordenes_compra import OrdenesCompra # ... y otros
+from app.core.domain.entities.ordenes_compra import OrdenesCompra, OrdenesCompraItem # ... y otros
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.core.ports.repositories.cotizacion_repository import CotizacionRepositoryPort
-from app.core.ports.repositories.cotizaciones_versiones_repository import CotizacionVersionRepositoryPort
+from app.core.ports.repositories.cotizaciones_versiones_repository import CotizacionVersionesRepositoryPort
 from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
 from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import OrdenesCompraRequest
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
 from typing import List
+from fastapi import HTTPException
+import asyncio
+import concurrent.futures
+import traceback
 
 class GenerarOrdenCompra:   
     def __init__(
         self,
         ordenes_compra_repo: OrdenesCompraRepositoryPort,
-        cotizacion_repo: CotizacionRepositoryPort,
-        cotizacion_version_repo: CotizacionVersionRepositoryPort,
+        cotizacion_version_repo: CotizacionVersionesRepositoryPort,
         excel_generator: ExcelGeneratorPort,
         file_storage: FileStoragePort
     ):
         self.ordenes_compra_repo = ordenes_compra_repo
-        self.cotizacion_repo = cotizacion_repo
         self.cotizacion_version_repo = cotizacion_version_repo
         self.excel_generator = excel_generator
         self.file_storage = file_storage
 
-    def execute(self, request: OrdenesCompraRequest) -> List[str]:
+    async def _process_and_generate_excel_for_contacto(self, id_contacto: int, generar_oc_request: GenerarOCRequest) -> str:
+        """
+        Procesa un contacto específico, genera el Excel y lo sube a S3.
+        Esta función está diseñada para ser ejecutada de manera asíncrona.
+        """
+        try:
+            print(f"Procesando contacto {id_contacto}")
+            
+            # Crear un request específico para este contacto
+            request_contacto = GenerarOCRequest(
+                id_usuario=generar_oc_request.id_usuario,
+                id_cotizacion=generar_oc_request.id_cotizacion,
+                id_version=generar_oc_request.id_version,
+                id_contacto_proveedor=[id_contacto]
+            )
+            
+            # Generar Excel para este contacto específico
+            excel_files = self.excel_generator.generate_for_order(request_contacto)
+            
+            if not excel_files:
+                print(f"No se generaron archivos Excel para el contacto {id_contacto}")
+                return None
+                
+            # Subir archivos a S3
+            urls = await self.file_storage.save_multiple(excel_files)
+            
+            print(f"Excel generado y subido exitosamente para el contacto {id_contacto}: {urls}")
+            return urls[0] if urls else None
+            
+        except Exception as e:
+            print(f"Error al procesar el contacto {id_contacto}: {e}")
+            traceback.print_exc()
+            return None
 
-        if not self.cotizacion_repo.exists_by_id(request.idCotizacion):
-            raise ValueError("La cotización especificada no existe.")
+    async def execute(self, request: OrdenesCompraRequest) -> List[str]:
+        print("Ejecutando caso de uso")
 
-        if not self.cotizacion_version_repo.exists_by_id(request.idVersion):
+        if not self.cotizacion_version_repo.exists_by_id(request.idCotizacionVersiones):
             raise ValueError("La versión de cotización especificada no existe.")
+    
+        print("Version de cotización existe")
 
-        generated_files_urls = []
+        # 1. Guardar todas las órdenes de compra en la base de datos
+        print("Guardando órdenes de compra en la base de datos...")
         for order_data in request.data:
-            # 2. Mapear DTO a Entidad de Dominio
-            ordenes_compra_entity = OrdenesCompra(...) # Crear la entidad con los datos
+            # Mapear los productos del DTO a la entidad OrdenesCompraItem
+            items_entidad = [
+                OrdenesCompraItem(
+                    id_producto=producto.idProducto,
+                    cantidad=producto.cantidad,
+                    p_unitario=producto.pUnitario,
+                    p_total=producto.ptotal
+                )
+                for producto in order_data.productos
+            ]
 
-            # 3. Guardar en la base de datos (usando el puerto de OC)
-            saved_order = self.ordenes_compra_repo.save(ordenes_compra_entity)
+            # Mapear DTO completo a la Entidad de Dominio OrdenesCompra
+            ordenes_compra_entity = OrdenesCompra(
+                id_usuario=request.idUsuario,
+                id_cotizacion=request.idCotizacion,
+                id_cotizacion_versiones=request.idCotizacionVersiones,
+                id_proveedor=order_data.proveedorInfo.idProveedor,
+                id_proveedor_contacto=order_data.proveedorInfo.idProveedorContacto,
+                moneda=order_data.proveedorInfo.moneda,
+                pago=order_data.proveedorInfo.pago,
+                entrega=order_data.proveedorInfo.entrega,
+                items=items_entidad
+            )
 
-            print(saved_order)
-            
-            # 4. Generar el Excel (usando el puerto de Excel)
-            #excel_bytes = self.excel_generator.generate_for_order(saved_order)
-            
-            # 5. Guardar en S3 (usando el puerto de almacenamiento)
-            #filename = f"OC-{saved_order.id_proveedor}-{saved_order.id_cotizacion}.xlsx"
-            #file_url = self.file_storage.save(excel_bytes, filename)
-            
-            #generated_files_urls.append(file_url)
+            # Guardar en la base de datos
+            self.ordenes_compra_repo.save(ordenes_compra_entity)
+            print(f"Orden de compra guardada para proveedor contacto {order_data.proveedorInfo.idProveedorContacto}")
 
+        # 2. Crear GenerarOCRequest con todos los contactos
+        lista_ids_contacto = list(set([
+            order_data.proveedorInfo.idProveedorContacto
+            for order_data in request.data
+        ]))
+        print(f"Lista de IDs de contacto: {lista_ids_contacto}")
+
+        generar_oc_request = GenerarOCRequest(
+            id_usuario=request.idUsuario,
+            id_cotizacion=request.idCotizacion,
+            id_version=request.idCotizacionVersiones,
+            id_contacto_proveedor=lista_ids_contacto
+        )
+
+        # 3. Verificar que hay datos para generar Excel
+        resultados = self.ordenes_compra_repo.obtener_info_oc(generar_oc_request)
+        if not resultados:
+            raise HTTPException(
+                status_code=404, 
+                detail="No se encontraron datos para los parámetros especificados"
+            )
+
+        print(f"Total de resultados obtenidos: {len(resultados)}")
+
+        # 4. Generar Excel y subir a S3 usando paralelismo
+        print("Generando Excel y subiendo a S3 con paralelismo...")
+        generated_files_urls = []
+        
+        # Usar asyncio.gather para paralelismo asíncrono
+        tasks = [
+            self._process_and_generate_excel_for_contacto(id_contacto, generar_oc_request)
+            for id_contacto in lista_ids_contacto
+        ]
+        
+        urls = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Filtrar URLs válidas
+        for url in urls:
+            if isinstance(url, str) and url:
+                generated_files_urls.append(url)
+            elif isinstance(url, Exception):
+                print(f"Error en procesamiento paralelo: {url}")
+
+        if not generated_files_urls:
+            raise HTTPException(
+                status_code=500,
+                detail="No se pudo generar ninguna orden de compra."
+            )
+
+        print(f"Se generaron {len(generated_files_urls)} archivos Excel exitosamente")
         return generated_files_urls

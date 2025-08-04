@@ -12,8 +12,9 @@ class OrdenesCompraItem:
 class OrdenesCompra:
     id_usuario: int
     id_cotizacion: int
-    id_version: int
+    id_cotizacion_versiones: int
     id_proveedor: int
+    id_proveedor_contacto: int
     moneda: str
     pago: str
     entrega: str

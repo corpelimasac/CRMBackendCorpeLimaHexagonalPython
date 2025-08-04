@@ -1,5 +1,6 @@
 import os
 from app.core.ports.services.file_storage_port import FileStoragePort
+from typing import List
 
 class LocalFileStorageAdapter(FileStoragePort):
     def __init__(self, base_dir: str = "./temp_files"):
@@ -12,6 +13,14 @@ class LocalFileStorageAdapter(FileStoragePort):
             f.write(file_content)
         return path
 
+    async def save_multiple(self, files: dict[str, bytes]) -> List[str]:
+        """Guarda múltiples archivos localmente y devuelve lista de rutas"""
+        paths = []
+        for filename, content in files.items():
+            path = await self.save(content, filename)
+            paths.append(path)
+        return paths
+
     async def cleanup(self, file_path: str):
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -19,6 +28,7 @@ class LocalFileStorageAdapter(FileStoragePort):
     async def cleanup_pdf(self, file_path: str):
         if os.path.exists(file_path):
             os.remove(file_path)
+            
 
     async def saveS3(self, file_content:bytes, filename:str) -> str:
         pass

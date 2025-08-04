@@ -21,9 +21,11 @@ class OrdenesCompraModel(Base):
   pago=Column(String(255), nullable=True)
   entrega=Column(String(255), nullable=True)
 
-  version = Column(Integer, nullable=True)
   activo = Column(Boolean, default=True, nullable=True)
   fecha_creacion = Column(Date, default=datetime.now, nullable=True)
+
+    # Relación con la tabla de cotizaciones versiones
+  id_cotizacion_versiones = Column(BIGINT, ForeignKey("cotizaciones_versiones.id_cotizacion_versiones"), nullable=True)
 
     # Relación con la tabla de cotizaciones
   id_cotizacion = Column(BIGINT, ForeignKey("cotizacion.id_cotizacion"), nullable=False)
@@ -33,3 +35,6 @@ class OrdenesCompraModel(Base):
 
   # Relación de uno a uno con la tabla de proveedores
   id_proveedor = Column(BIGINT, ForeignKey("proveedores.id_proveedor"), nullable=False)
+
+  # Relación de uno a uno con la tabla de proveedores contactos
+  id_proveedor_contacto = Column(BIGINT, ForeignKey("proveedor_contactos.id_proveedor_contacto"), nullable=False)

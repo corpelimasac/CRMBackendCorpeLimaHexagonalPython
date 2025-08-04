@@ -4,6 +4,19 @@ from sqlalchemy.orm import Session
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
 from datetime import datetime
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
+from typing import List, Any
+from sqlalchemy import case
+from app.adapters.outbound.database.models.cotizaciones_versiones_model import CotizacionesVersionesModel
+from app.adapters.outbound.database.models.productos_cotizaciones_model import ProductosCotizacionesModel
+from app.adapters.outbound.database.models.unidad_medida_model import UnidadMedidaModel
+from app.adapters.outbound.database.models.marcas_model import MarcasModel
+from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
+from app.adapters.outbound.database.models.proveedor_detalle_model import ProveedorDetalleModel
+from app.adapters.outbound.database.models.productos_model import ProductosModel
+from app.adapters.outbound.database.models.intermedia_proveedor_contacto_model import intermedia_proveedor_contacto
+from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
+from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 
 class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
@@ -12,28 +25,28 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
     def save(self, order: OrdenesCompra) -> OrdenesCompra:
         try:
-            # --- 1. Mapeo: Entidad de Dominio -> Modelo de la Orden Principal ---
-            # Nota: Faltan campos en tu entidad que sí están en el modelo de DB (ej. correlative, id_usuario).
-            # Deberás añadirlos a la entidad o gestionarlos aquí.
-            
+            print("Guardando orden de compra")
             # 1. Obtener el último correlativo
+
             last_correlative = self.db.query(OrdenesCompraModel).order_by(OrdenesCompraModel.id_orden.desc()).first()
             if last_correlative:
-                last_number = int(last_correlative.correlative.split('-')[-1])
+                last_number = int(last_correlative.correlative.split('-')[1])
                 new_number = last_number + 1
             else:
                 new_number = 1
 
+            current_year = datetime.now().year
             # 2. Generar el correlativo
-            new_correlative = f"OC-{new_number:03d}"
+            new_correlative = f"OC-{new_number:06d}-{current_year}"
 
             db_order = OrdenesCompraModel(
                 id_cotizacion=order.id_cotizacion,
                 id_proveedor=order.id_proveedor,
+                id_proveedor_contacto=order.id_proveedor_contacto,
                 moneda=order.moneda,
                 pago=order.pago,
                 entrega=order.entrega,
-                version=order.id_version,
+                id_cotizacion_versiones=order.id_cotizacion_versiones,
                 fecha_creacion=datetime.now(),
                 correlative=new_correlative, 
                 id_usuario=order.id_usuario
@@ -52,7 +65,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     id_producto=item.id_producto,
                     cantidad=item.cantidad,
                     precio_unitario=item.p_unitario,
-                    total=item.p_total
+                    precio_total=item.p_total
                 )
                 self.db.add(db_detail)
 
@@ -62,7 +75,6 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             # (Opcional) Refrescar el objeto para tener todos los datos de la DB
             #self.db.refresh(db_order) 
             
-            # Devuelves la entidad original o una actualizada con el nuevo ID
             return order
 
         except Exception as e:
@@ -70,3 +82,73 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             self.db.rollback()
             print(f"Error al guardar la orden de compra: {e}")
             raise e # Vuelve a lanzar la excepción para que el caso de uso la maneje
+        
+
+
+    def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
+        
+        """
+        Obtiene información de productos para generar orden de compra desde las tablas de órdenes ya guardadas
+        
+        Args:
+            request (GenerarOCRequest): Datos de la solicitud
+            
+        Returns:
+            List[Any]: Lista de resultados de la consulta
+        """
+        try:
+            print(f"Ejecutando consulta para cotización: {request.id_cotizacion}, versión: {request.id_version}")
+            print(f"Contactos de proveedor: {request.id_contacto_proveedor}")
+            
+            query = self.db.query(
+                OrdenesCompraModel.correlative.label('NUMERO_OC'),
+                OrdenesCompraModel.id_cotizacion.label('IDCOTIZACION'),
+                OrdenesCompraModel.id_cotizacion_versiones.label('IDVERSION'),
+                OrdenesCompraDetallesModel.cantidad.label('CANT'),
+                UnidadMedidaModel.descripcion.label('UMED'),
+                ProductosModel.nombre.label('PRODUCTO'),
+                MarcasModel.nombre.label('MARCA'),
+                ProductosModel.modelo_marca.label('MODELO'),
+                OrdenesCompraModel.fecha_creacion.label('FECHA'),
+                ProveedoresModel.id_proveedor.label('IDPROVEEDOR'),
+                ProveedoresModel.razon_social.label('PROVEEDOR'),
+                OrdenesCompraModel.id_proveedor_contacto.label('IDPROVEEDORCONTACTO'),
+                ProveedorContactosModel.nombre.label('PERSONAL'),
+                ProveedorContactosModel.telefono.label('TELEFONO'),
+                ProveedorContactosModel.celular.label('CELULAR'),
+                ProveedorContactosModel.correo.label('CORREO'),
+                ProveedoresModel.direccion.label('DIRECCION'),
+                OrdenesCompraModel.moneda.label('MONEDA'),
+                OrdenesCompraModel.pago.label('PAGO'),
+                OrdenesCompraDetallesModel.precio_unitario.label('PUNIT'),
+                case(
+                    (OrdenesCompraModel.igv.is_(None), 'SIN IGV'),
+                    else_=OrdenesCompraModel.igv
+                ).label('IGV'),
+                OrdenesCompraDetallesModel.precio_total.label('TOTAL')
+            ).select_from(OrdenesCompraModel)\
+             .join(OrdenesCompraDetallesModel, OrdenesCompraModel.id_orden == OrdenesCompraDetallesModel.id_orden)\
+             .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)\
+             .join(UnidadMedidaModel, ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida)\
+             .join(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)\
+             .join(ProveedoresModel, OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor)\
+             .join(ProveedorContactosModel, OrdenesCompraModel.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)\
+             .filter(OrdenesCompraModel.id_cotizacion == request.id_cotizacion)\
+             .filter(OrdenesCompraModel.id_cotizacion_versiones == request.id_version)\
+             .filter(OrdenesCompraModel.id_proveedor_contacto.in_(request.id_contacto_proveedor))
+            
+            resultados = query.all()
+            print(f"Consulta ejecutada. Resultados obtenidos: {len(resultados)}")
+            
+            if resultados:
+                print(f"Primer resultado: {resultados[0]}")
+            
+            return resultados
+            
+        except Exception as e:
+            print(f"Error en obtener_info_oc: {e}")
+            import traceback
+            traceback.print_exc()
+            return []
+ 
+ 
