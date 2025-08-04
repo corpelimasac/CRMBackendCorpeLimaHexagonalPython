@@ -27,7 +27,7 @@ class GenerarOrdenCompra:
 
     async def _process_and_generate_excel_for_contacto(self, id_contacto: int, generar_oc_request: GenerarOCRequest) -> str:
         """
-        Procesa un contacto específico, genera el Excel y lo sube a S3.
+        Procesa un contacto específico, genera el Excel, lo sube a S3 y actualiza la URL en la BD.
         Esta función está diseñada para ser ejecutada de manera asíncrona.
         """
         try:
@@ -51,8 +51,28 @@ class GenerarOrdenCompra:
             # Subir archivos a S3
             urls = await self.file_storage.save_multiple(excel_files)
             
-            print(f"Excel generado y subido exitosamente para el contacto {id_contacto}: {urls}")
-            return urls[0] if urls else None
+            if urls:
+                url_s3 = urls[0]
+                print(f"Excel generado y subido exitosamente para el contacto {id_contacto}: {url_s3}")
+                
+                # Obtener las órdenes de compra asociadas a este contacto
+                ordenes = self.ordenes_compra_repo.obtener_ordenes_por_contacto_y_version(
+                    generar_oc_request.id_cotizacion,
+                    generar_oc_request.id_version,
+                    id_contacto
+                )
+                
+                # Actualizar la URL S3 en todas las órdenes de este contacto
+                for orden in ordenes:
+                    exito = self.ordenes_compra_repo.actualizar_ruta_s3(orden.id_orden, url_s3)
+                    if exito:
+                        print(f"URL S3 actualizada en BD para orden {orden.id_orden}")
+                    else:
+                        print(f"Error al actualizar URL S3 para orden {orden.id_orden}")
+                
+                return url_s3
+            
+            return None
             
         except Exception as e:
             print(f"Error al procesar el contacto {id_contacto}: {e}")
@@ -133,7 +153,6 @@ class GenerarOrdenCompra:
         ]
         
         urls = await asyncio.gather(*tasks, return_exceptions=True)
-
         
         # Filtrar URLs válidas
         for url in urls:

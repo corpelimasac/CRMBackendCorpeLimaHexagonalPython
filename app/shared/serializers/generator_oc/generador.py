@@ -45,7 +45,7 @@ class Generador:
         
         # Truncar el nombre del proveedor para evitar nombres de archivo muy largos
         proveedor_truncado = self._truncate_proveedor_name(proveedor)
-        self.output_file = f"{num_orden}-{datetime.now().year} {proveedor_truncado}.xlsx"
+        self.output_file = f"{num_orden} {proveedor_truncado}.xlsx"
         self.subTitle=f"ORDEN DE COMPRA N° {num_orden}"
         self.wb = Workbook()
         self.ws = self.wb.active

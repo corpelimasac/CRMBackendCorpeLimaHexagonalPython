@@ -55,16 +55,10 @@ def get_provider_contacts_use_case(db: Session = Depends(get_db)) -> GetProvider
 def get_generate_purchase_order_use_case(db: Session = Depends(get_db)) -> GenerarOrdenCompra:
     print("Iniciando inyección de dependencias")
     ordenes_compra_repo = OrdenesCompraRepository(db)
-    
-    # Temporal: usar almacenamiento local mientras debugueamos AWS
-    # Para usar AWS: file_storage=AWSFileStorage()  
-    # Para usar local: file_storage=LocalFileStorageAdapter()
-    
     return GenerarOrdenCompra(
        ordenes_compra_repo=ordenes_compra_repo,
        cotizacion_version_repo=CotizacionVersionesRepository(db),
-       excel_generator=OpenPyXLExcelGenerator(ordenes_compra_repo),  
-       file_storage=AWSFileStorage()  
-       #file_storage=LocalFileStorageAdapter("./temp_files/ordenes_compra")
+       excel_generator=OpenPyXLExcelGenerator(ordenes_compra_repo),    
+       file_storage=AWSFileStorage()
     )
     

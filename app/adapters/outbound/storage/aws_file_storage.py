@@ -11,14 +11,6 @@ class AWSFileStorage(FileStoragePort):
 
     async def save(self, file_content: bytes, filename: str) -> str:
         """Guarda un archivo en S3 y devuelve su URL"""
-        # Debug: Verificar credenciales AWS
-        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY') 
-        print(f"DEBUG AWS - Access Key ID disponible: {'Sí' if aws_access_key else 'No'}")
-        print(f"DEBUG AWS - Secret Key disponible: {'Sí' if aws_secret_key else 'No'}")
-        if aws_access_key:
-            print(f"DEBUG AWS - Access Key ID (primeros 8 chars): {aws_access_key[:8]}...")
-        
         # Crear archivo temporal
         with tempfile.NamedTemporaryFile(delete=False) as temp_file:
             temp_file.write(file_content)
@@ -27,7 +19,6 @@ class AWSFileStorage(FileStoragePort):
         try:
             # Subir a S3
             s3_key = f"ordenes_de_compra/{filename}"
-            print(f"DEBUG AWS - Intentando subir a S3: {s3_key}")
             url = upload_file_to_s3(temp_file_path, s3_key, self.bucket_name, self.region)
             return url
         finally:

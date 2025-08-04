@@ -84,7 +84,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             raise e # Vuelve a lanzar la excepción para que el caso de uso la maneje
         
 
-    
+
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
         
         """
@@ -149,6 +149,61 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             print(f"Error en obtener_info_oc: {e}")
             import traceback
             traceback.print_exc()
+            return []
+
+    def actualizar_ruta_s3(self, id_orden: int, ruta_s3: str) -> bool:
+        """
+        Actualiza la ruta S3 de una orden de compra específica
+        
+        Args:
+            id_orden (int): ID de la orden de compra
+            ruta_s3 (str): URL del archivo en S3
+            
+        Returns:
+            bool: True si se actualizó correctamente, False en caso contrario
+        """
+        try:
+            orden = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == id_orden
+            ).first()
+            
+            if orden:
+                orden.ruta_s3 = ruta_s3
+                self.db.commit()
+                print(f"URL S3 actualizada para orden {id_orden}: {ruta_s3}")
+                return True
+            else:
+                print(f"No se encontró orden con ID {id_orden}")
+                return False
+                
+        except Exception as e:
+            print(f"Error al actualizar ruta S3: {e}")
+            self.db.rollback()
+            return False
+
+    def obtener_ordenes_por_contacto_y_version(self, id_cotizacion: int, id_version: int, id_contacto: int) -> List[OrdenesCompraModel]:
+        """
+        Obtiene las órdenes de compra de un contacto específico en una versión de cotización
+        
+        Args:
+            id_cotizacion (int): ID de la cotización
+            id_version (int): ID de la versión
+            id_contacto (int): ID del contacto del proveedor
+            
+        Returns:
+            List[OrdenesCompraModel]: Lista de órdenes encontradas
+        """
+        try:
+            ordenes = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_cotizacion == id_cotizacion,
+                OrdenesCompraModel.id_cotizacion_versiones == id_version,
+                OrdenesCompraModel.id_proveedor_contacto == id_contacto
+            ).all()
+            
+            return ordenes
+            
+        except Exception as e:
+            print(f"Error al obtener órdenes por contacto: {e}")
             return []
  
  

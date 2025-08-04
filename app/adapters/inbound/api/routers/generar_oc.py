@@ -94,14 +94,6 @@ def _process_and_generate_oc(
         local_path = os.path.join(output_folder, generador.output_file)
         s3_key = f"ordenes_de_compra/{generador.output_file}"
         
-        # Debug: Verificar credenciales AWS (endpoint original)
-        aws_access_key = os.getenv('AWS_ACCESS_KEY_ID')
-        aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY') 
-        print(f"DEBUG ORIGINAL - Access Key ID disponible: {'Sí' if aws_access_key else 'No'}")
-        print(f"DEBUG ORIGINAL - Secret Key disponible: {'Sí' if aws_secret_key else 'No'}")
-        if aws_access_key:
-            print(f"DEBUG ORIGINAL - Access Key ID (primeros 8 chars): {aws_access_key[:8]}...")
-        
         url = upload_file_to_s3(local_path, s3_key, 'bucketcorpe', 'us-east-1')
         print(f"URL del archivo subido: {url}")
 
