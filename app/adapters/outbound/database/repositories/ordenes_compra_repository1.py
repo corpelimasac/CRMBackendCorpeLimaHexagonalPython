@@ -84,7 +84,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             raise e # Vuelve a lanzar la excepción para que el caso de uso la maneje
         
 
-
+    
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
         
         """

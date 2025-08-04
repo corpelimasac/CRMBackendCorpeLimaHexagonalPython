@@ -5,7 +5,7 @@ from functools import lru_cache
 from pydantic_settings import BaseSettings
 from pydantic import Field
 from typing import Optional
-
+from dotenv import load_dotenv
 
 class Settings(BaseSettings):
     """
@@ -15,6 +15,8 @@ class Settings(BaseSettings):
     app_name: str = Field(default="CRM Backend", env="APP_NAME")
     debug: bool = Field(default=False, env="DEBUG")
     version: str = Field(default="1.0.0", env="VERSION")
+
+    load_dotenv()
     
     # Configuración de la base de datos
     database_url: str = Field(
