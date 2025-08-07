@@ -25,4 +25,5 @@ class OrdenesCompraRequest(BaseModel):
   idCotizacion: int = Field(..., description="ID de la cotización")
   idCotizacionVersiones: int = Field(..., description="ID de la versión de la cotización")
   idUsuario: int = Field(..., description="ID del usuario")
+  consorcio: bool = Field(..., description="Si es consorcio")
   data: List[Data] = Field(..., description="Lista de ordenes de compra")

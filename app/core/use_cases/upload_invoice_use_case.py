@@ -3,7 +3,7 @@ from app.core.ports.services.file_storage_port import FileStoragePort
 import os
 
 class UploadInvoiceUseCase:
-  """Caso de uso para subir una factura XML"""
+  """Caso de uso para subir un XML"""
   def __init__(self, invoice_processor: InvoiceProcessorPort, file_storage: FileStoragePort, files_dir: str):
     self.invoice_processor = invoice_processor
     self.file_storage = file_storage

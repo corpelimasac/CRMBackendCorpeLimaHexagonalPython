@@ -18,4 +18,5 @@ class OrdenesCompra:
     moneda: str
     pago: str
     entrega: str
+    consorcio: bool
     items: List[OrdenesCompraItem]

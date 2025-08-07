@@ -33,14 +33,21 @@ class GenerarOCRequest(BaseModel):
         example=1,
         gt=0
     )
-
+    consorcio: bool = Field(
+        ..., 
+        description="Si es consorcio",
+        example=True,
+        gt=0
+    )
+    
     class Config:
         json_schema_extra = {
             "example": {
                 "id_cotizacion": 38,
                 "id_version": 98,
                 "id_contacto_proveedor": [13, 14],
-                "id_usuario": 8
+                "id_usuario": 8,
+                "consorcio": True
             }
         }
 

@@ -16,6 +16,8 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
         con el nombre del archivo como clave y el contenido en bytes como valor.
         """
         excel_files = {}
+
+        
         
         # Obtener información de la orden de compra
         resultados = self.ordenes_compra_repo.obtener_info_oc(request)
@@ -69,7 +71,8 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
                     oc=datos_para_excel,
                     proveedor=nombre_proveedor,
                     igv=igv,
-                    output_folder=temp_dir
+                    output_folder=temp_dir,
+                    consorcio=request.consorcio
                 )
                 generador.generar_excel()
                 

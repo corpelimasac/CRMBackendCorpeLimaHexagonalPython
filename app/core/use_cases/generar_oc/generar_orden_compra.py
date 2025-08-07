@@ -38,7 +38,8 @@ class GenerarOrdenCompra:
                 id_usuario=generar_oc_request.id_usuario,
                 id_cotizacion=generar_oc_request.id_cotizacion,
                 id_version=generar_oc_request.id_version,
-                id_contacto_proveedor=[id_contacto]
+                id_contacto_proveedor=[id_contacto],
+                consorcio=generar_oc_request.consorcio
             )
             
             # Generar Excel para este contacto específico
@@ -111,7 +112,8 @@ class GenerarOrdenCompra:
                 moneda=order_data.proveedorInfo.moneda,
                 pago=order_data.proveedorInfo.pago,
                 entrega=order_data.proveedorInfo.entrega,
-                items=items_entidad
+                items=items_entidad,
+                consorcio=request.consorcio
             )
 
             # Guardar en la base de datos
@@ -129,7 +131,8 @@ class GenerarOrdenCompra:
             id_usuario=request.idUsuario,
             id_cotizacion=request.idCotizacion,
             id_version=request.idCotizacionVersiones,
-            id_contacto_proveedor=lista_ids_contacto
+            id_contacto_proveedor=lista_ids_contacto,
+            consorcio=request.consorcio
         )
 
         # 3. Verificar que hay datos para generar Excel

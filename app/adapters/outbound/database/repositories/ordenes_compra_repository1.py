@@ -6,7 +6,7 @@ from app.adapters.outbound.database.models.ordenes_compra_detalles_model import 
 from datetime import datetime
 from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
 from typing import List, Any
-from sqlalchemy import case
+from sqlalchemy import case, func
 from app.adapters.outbound.database.models.cotizaciones_versiones_model import CotizacionesVersionesModel
 from app.adapters.outbound.database.models.productos_cotizaciones_model import ProductosCotizacionesModel
 from app.adapters.outbound.database.models.unidad_medida_model import UnidadMedidaModel
@@ -17,6 +17,7 @@ from app.adapters.outbound.database.models.productos_model import ProductosModel
 from app.adapters.outbound.database.models.intermedia_proveedor_contacto_model import intermedia_proveedor_contacto
 from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
+
 
 class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
@@ -109,7 +110,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 ProductosModel.nombre.label('PRODUCTO'),
                 MarcasModel.nombre.label('MARCA'),
                 ProductosModel.modelo_marca.label('MODELO'),
-                OrdenesCompraModel.fecha_creacion.label('FECHA'),
+                func.date(OrdenesCompraModel.fecha_creacion).label('FECHA'),
                 ProveedoresModel.id_proveedor.label('IDPROVEEDOR'),
                 ProveedoresModel.razon_social.label('PROVEEDOR'),
                 OrdenesCompraModel.id_proveedor_contacto.label('IDPROVEEDORCONTACTO'),

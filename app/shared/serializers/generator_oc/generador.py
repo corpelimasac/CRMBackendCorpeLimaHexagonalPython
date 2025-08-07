@@ -8,7 +8,7 @@ from openpyxl.drawing.image import Image
 from datetime import datetime
 
 class Generador:
-    def __init__(self, num_orden, oc, proveedor, igv, output_folder=None): 
+    def __init__(self, num_orden, oc, proveedor, igv, output_folder=None,consorcio=False): 
         # Si no se especifica output_folder, usar la carpeta data dentro del mismo directorio
         if output_folder is None:
             # Obtener el directorio actual del archivo generador.py
@@ -33,10 +33,16 @@ class Generador:
         self.orden = oc
         self.igv=igv
         self.moneda="SOLES"
-        
+        self.consorcio=consorcio
         # Configuración de la imagen
         current_dir = os.path.dirname(os.path.abspath(__file__))
-        self.image_path = os.path.join(current_dir, "img", "principal.png")
+
+        if self.consorcio:
+            self.image_path = os.path.join(current_dir, "img", "consorcioLogo.png")
+        else:
+            self.image_path = os.path.join(current_dir, "img", "principal.png")
+        
+        
         self.image_width = 300  # Ancho en píxeles
         self.image_height = 150  # Alto en píxeles
         self.image_position = "D1"  # Posición en Excel (ej: "D1")
@@ -185,11 +191,13 @@ class Generador:
             # P.UNIT con alineación centrada
             punit_cell = self.ws.cell(row=row, column=7)
             punit_cell.value = producto.get("P.UNIT", "")
+            punit_cell.alignment = center_alignment
             
             # P.TOTAL con formato de moneda
             ptotal_cell = self.ws.cell(row=row, column=8)
             ptotal_cell.value = f"=B{row}*G{row}"
             ptotal_cell.number_format = currency_format
+            ptotal_cell.alignment = center_alignment
             
 
 
@@ -277,7 +285,8 @@ class Generador:
 
         info_start_row = self.last_product_row + 4  
 
-        info_lines = [
+
+        info_lines_corpelima = [
             "FACTURAR:",
             "CORPELIMA S.A.C",
             "RUC: 20601460913",
@@ -289,6 +298,25 @@ class Generador:
             "CEL:  952531238",
             "ventas@corpelima.com"
         ]
+
+        info_lines_consorcio=[
+            "FACTURAR:",
+            "CONSORCIO ELECTRO MINERO S.A.C",
+            "RUC: 20565501942",
+            "CALLE  55 MZ WW2 LT 13   URB. LA FLORESTA DE PRO   LOS OLIVOS  LIMA",
+            "",
+            "BCP:   CTA. CTE  DOLARES  No    191-2422121-1-78",
+            "BCP:   CTA. CTE SOLES     No    191-2436858-0-25",
+            "",
+            "CEL:  930976197 / 952531238 / 934972023",
+            "ventas.consorcioelectrominero@gmail.com"
+        ]
+
+        if self.consorcio:
+            info_lines = info_lines_consorcio
+        else:
+            info_lines = info_lines_corpelima
+
 
         for i, line in enumerate(info_lines):
             row = info_start_row + i
