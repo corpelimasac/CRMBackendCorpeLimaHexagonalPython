@@ -123,8 +123,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 OrdenesCompraModel.pago.label('PAGO'),
                 OrdenesCompraDetallesModel.precio_unitario.label('PUNIT'),
                 case(
-                    (OrdenesCompraModel.igv.is_(None), 'SIN IGV'),
-                    else_=OrdenesCompraModel.igv
+                    (ProveedorDetalleModel.igv=="SIN IGV", 'SIN IGV'),
+                    else_=ProveedorDetalleModel.igv=="CON IGV"
                 ).label('IGV'),
                 OrdenesCompraDetallesModel.precio_total.label('TOTAL')
             ).select_from(OrdenesCompraModel)\
@@ -133,6 +133,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
              .join(UnidadMedidaModel, ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida)\
              .join(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)\
              .join(ProveedoresModel, OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor)\
+             .join(ProveedorDetalleModel, ProductosModel.id_producto == ProveedorDetalleModel.id_producto)\
              .join(ProveedorContactosModel, OrdenesCompraModel.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)\
              .filter(OrdenesCompraModel.id_cotizacion == request.id_cotizacion)\
              .filter(OrdenesCompraModel.id_cotizacion_versiones == request.id_version)\
