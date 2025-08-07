@@ -36,8 +36,7 @@ class GenerarOCRequest(BaseModel):
     consorcio: bool = Field(
         ..., 
         description="Si es consorcio",
-        example=True,
-        gt=0
+        example=True
     )
     
     class Config:
