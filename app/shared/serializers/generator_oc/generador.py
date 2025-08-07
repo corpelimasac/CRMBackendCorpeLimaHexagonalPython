@@ -292,8 +292,8 @@ class Generador:
             "RUC: 20601460913",
             "CALLE  55 MZ WW2 LT 13   URB. LA FLORESTA DE PRO   LOS OLIVOS  LIMA",
             "",
-            "BCP:   CTA. CTE  DOLARES  No    1942383846160",
-            "BCP:   CTA. CTE SOLES     No    1942395668064",
+            "BCP:   CTA. CTE  DOLARES  No    ",
+            "BCP:   CTA. CTE SOLES     No    ",
             "",
             "CEL:  952531238",
             "ventas@corpelima.com"
@@ -305,8 +305,8 @@ class Generador:
             "RUC: 20565501942",
             "CALLE  55 MZ WW2 LT 13   URB. LA FLORESTA DE PRO   LOS OLIVOS  LIMA",
             "",
-            "BCP:   CTA. CTE  DOLARES  No    191-2422121-1-78",
-            "BCP:   CTA. CTE SOLES     No    191-2436858-0-25",
+            "BCP:   CTA. CTE  DOLARES  No    ",
+            "BCP:   CTA. CTE SOLES     No    ",
             "",
             "CEL:  930976197 / 952531238 / 934972023",
             "ventas.consorcioelectrominero@gmail.com"
