@@ -15,7 +15,7 @@ async def upload_xml_endpoint(
     if not xml_file.filename or not xml_file.filename.lower().endswith('.xml'):
         raise HTTPException(status_code=400, detail="El archivo debe ser un .xml válido.")
         
-    xml_content = await xml_file.read()
+    xml_content = await xml_file.read() 
     
     try:
         pdf_bytes, pdf_filename = await use_case.execute(xml_content, xml_file.filename)
