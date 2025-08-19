@@ -39,8 +39,8 @@ class IntegracionSunatUC:
             try:
                 print(f"Intento {intento}/{max_intentos} para RUC {ruc}")
                 
-                # Realizar consulta en SUNAT
-                resultado = self.sunat_scraper.consultar_ruc(ruc)
+                # Realizar consulta en SUNAT con modo rápido por defecto
+                resultado = self.sunat_scraper.consultar_ruc(ruc, modo_rapido=True)
                 
                 # Verificar si hubo error en la consulta
                 if "error" in resultado and resultado["razonSocial"] == "Error en consulta":
