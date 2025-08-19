@@ -14,6 +14,7 @@ ENV CHROME_DRIVER=/usr/bin/chromedriver
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
+    gnupg2 \
     unzip \
     curl \
     xvfb \
@@ -40,23 +41,27 @@ RUN apt-get update && apt-get install -y \
     libvulkan1 \
     && rm -rf /var/lib/apt/lists/*
 
-# Instalar Google Chrome
-RUN wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | apt-key add - \
-    && echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >> /etc/apt/sources.list.d/google-chrome.list \
+# Instalar Google Chrome descargando directamente el .deb
+RUN wget -q -O /tmp/google-chrome-stable.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb \
     && apt-get update \
-    && apt-get install -y google-chrome-stable \
+    && apt-get install -y /tmp/google-chrome-stable.deb \
+    && rm /tmp/google-chrome-stable.deb \
     && rm -rf /var/lib/apt/lists/*
 
 # Crear directorio para ChromeDriver
 RUN mkdir -p /opt/chromedriver
 
 # Instalar ChromeDriver compatible
-RUN CHROME_DRIVER_VERSION=$(curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) \
+RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d. -f1-3) \
+    && echo "Chrome version: $CHROME_VERSION" \
+    && CHROME_DRIVER_VERSION=$(curl -sS "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_VERSION%.*}" || curl -sS chromedriver.storage.googleapis.com/LATEST_RELEASE) \
+    && echo "ChromeDriver version: $CHROME_DRIVER_VERSION" \
     && wget -O /tmp/chromedriver.zip "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" \
     && unzip /tmp/chromedriver.zip -d /opt/chromedriver \
     && rm /tmp/chromedriver.zip \
     && chmod +x /opt/chromedriver/chromedriver \
-    && ln -fs /opt/chromedriver/chromedriver /usr/bin/chromedriver
+    && ln -fs /opt/chromedriver/chromedriver /usr/bin/chromedriver \
+    && chromedriver --version
 
 # Crea el directorio de la app
 WORKDIR /app

@@ -86,11 +86,23 @@ class SunatScraper:
 
             # Intentar usar ChromeDriver del sistema primero, luego WebDriverManager
             try:
-                # Intentar usar el ChromeDriver instalado en el sistema
                 import os
-                if os.path.exists('/usr/bin/chromedriver'):
-                    service = ChromeService(executable_path='/usr/bin/chromedriver')
-                    print("Usando ChromeDriver del sistema: /usr/bin/chromedriver")
+                # Rutas posibles para ChromeDriver
+                chromedriver_paths = [
+                    '/usr/bin/chromedriver',
+                    '/usr/local/bin/chromedriver',
+                    '/opt/chromedriver/chromedriver'
+                ]
+                
+                chromedriver_path = None
+                for path in chromedriver_paths:
+                    if os.path.exists(path):
+                        chromedriver_path = path
+                        break
+                
+                if chromedriver_path:
+                    service = ChromeService(executable_path=chromedriver_path)
+                    print(f"Usando ChromeDriver del sistema: {chromedriver_path}")
                 else:
                     service = ChromeService(executable_path=ChromeDriverManager().install())
                     print("Usando ChromeDriver de WebDriverManager")
