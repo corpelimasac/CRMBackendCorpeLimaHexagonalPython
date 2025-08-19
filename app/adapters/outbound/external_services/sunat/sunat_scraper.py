@@ -32,45 +32,72 @@ class SunatScraper:
         """
         driver = None
         try:
-            # Configurar opciones de Chrome para máximo rendimiento
+            # Configurar opciones de Chrome para Docker/Linux
             options = ChromeOptions()
             
             # User-Agent
-            user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
             options.add_argument(f'user-agent={user_agent}')
             
-            # Opciones para evitar detección y mejorar rendimiento
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
-            options.add_argument("--disable-blink-features=AutomationControlled")
-            
-            # Modo headless y optimizaciones de rendimiento
+            # Opciones críticas para Docker
             options.add_argument("--headless")
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
+            options.add_argument("--disable-software-rasterizer")
+            options.add_argument("--disable-background-timer-throttling")
+            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--disable-renderer-backgrounding")
+            options.add_argument("--disable-features=TranslateUI")
+            options.add_argument("--disable-ipc-flooding-protection")
+            
+            # Configuraciones de memoria y rendimiento para contenedores
+            options.add_argument("--memory-pressure-off")
+            options.add_argument("--max_old_space_size=4096")
+            options.add_argument("--disable-background-networking")
+            
+            # Configuraciones de seguridad y estabilidad
+            options.add_argument("--no-zygote")
+            options.add_argument("--no-first-run")
+            options.add_argument("--disable-default-apps")
             options.add_argument("--disable-extensions")
             options.add_argument("--disable-plugins")
-            options.add_argument("--disable-images")
-            # NO deshabilitar JavaScript ya que SUNAT lo necesita
+            options.add_argument("--disable-sync")
+            
+            # Configuraciones de display para Docker
+            options.add_argument("--window-size=1920,1080")
             options.add_argument("--disable-web-security")
-            options.add_argument("--disable-features=VizDisplayCompositor")
-            options.add_argument("--window-size=1280,720")
-            options.add_argument("--disable-logging")
-            options.add_argument("--disable-gpu-logging")
+            options.add_argument("--allow-running-insecure-content")
             
-            # Configurar timeouts más agresivos
-            options.add_argument("--page-load-strategy=eager")
+            # Configuraciones anti-detección
+            options.add_experimental_option("excludeSwitches", ["enable-automation"])
+            options.add_experimental_option('useAutomationExtension', False)
+            options.add_argument("--disable-blink-features=AutomationControlled")
             
-            # Configurar prefs para deshabilitar imágenes y otros recursos
+            # Configurar prefs para optimizar recursos
             prefs = {
                 "profile.managed_default_content_settings.images": 2,
                 "profile.default_content_setting_values.notifications": 2,
                 "profile.managed_default_content_settings.media_stream": 2,
+                "profile.default_content_settings.popups": 0,
+                "profile.managed_default_content_settings.geolocation": 2
             }
             options.add_experimental_option("prefs", prefs)
 
-            service = ChromeService(executable_path=ChromeDriverManager().install())
+            # Intentar usar ChromeDriver del sistema primero, luego WebDriverManager
+            try:
+                # Intentar usar el ChromeDriver instalado en el sistema
+                import os
+                if os.path.exists('/usr/bin/chromedriver'):
+                    service = ChromeService(executable_path='/usr/bin/chromedriver')
+                    print("Usando ChromeDriver del sistema: /usr/bin/chromedriver")
+                else:
+                    service = ChromeService(executable_path=ChromeDriverManager().install())
+                    print("Usando ChromeDriver de WebDriverManager")
+            except Exception as e:
+                print(f"Error configurando ChromeDriver: {e}")
+                service = ChromeService(executable_path=ChromeDriverManager().install())
+
             driver = webdriver.Chrome(service=service, options=options)
             
             # Configurar timeouts del driver más estrictos
