@@ -37,3 +37,9 @@ openpyxl
 
 python-dotenv
 
+
+webdriver-manager
+selenium
+requests
+
+

@@ -9,7 +9,7 @@ from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
 from typing import List
 from fastapi import HTTPException
 import asyncio
-import concurrent.futures
+
 import traceback
 
 class GenerarOrdenCompra:   

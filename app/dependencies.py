@@ -16,6 +16,8 @@ from app.core.use_cases.generar_oc.generar_orden_compra import GenerarOrdenCompr
 from app.adapters.outbound.database.repositories.ordenes_compra_repository1 import OrdenesCompraRepository
 from app.adapters.outbound.database.repositories.cotizacion_version_repository import CotizacionVersionesRepository
 from app.adapters.outbound.excel.openpyxl_excel_generator import OpenPyXLExcelGenerator
+from app.core.use_cases.integracion_sunat.integracion_sunat_uc import IntegracionSunatUC
+from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScraper
 
 # --- Creación de Instancias (Singletons para eficiencia) ---
 
@@ -62,3 +64,6 @@ def get_generate_purchase_order_use_case(db: Session = Depends(get_db)) -> Gener
        file_storage=AWSFileStorage()
     )
     
+def get_integracion_sunat_use_case() -> IntegracionSunatUC:
+    sunat_scraper = SunatScraper()
+    return IntegracionSunatUC(sunat_scraper)
