@@ -1,5 +1,5 @@
-# 1. Usa una imagen base de Python completa para facilitar la instalación de dependencias
-FROM python:3.11
+# 1. Usa una imagen base específica y estable (Debian Bookworm)
+FROM python:3.11-bookworm
 
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1
@@ -13,7 +13,7 @@ RUN apt-get update && apt-get install -y \
     # Dependencias clave para que Chrome funcione
     libglib2.0-0 \
     libnss3 \
-    libgconf-2-4 \
+    # libgconf-2-4  <-- SE HA ELIMINADO ESTA LÍNEA OBSOLETA
     libfontconfig1 \
     libx11-6 \
     libxext6 \
@@ -55,5 +55,5 @@ COPY . .
 # Expone el puerto
 EXPOSE 8000
 
-# 3. Comando para arrancar la aplicación
+# Comando para arrancar la aplicación
 CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
