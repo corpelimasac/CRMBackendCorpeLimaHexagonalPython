@@ -43,6 +43,7 @@ class WebDriverManager:
         with self._lock:
             # Verificar si el driver existe y no ha expirado
             if self._driver is not None and not self._is_expired():
+                print("✅ Usando WebDriver existente...")
                 return self._driver
             
             # Si el driver existe pero ha expirado, cerrarlo
@@ -159,6 +160,10 @@ class WebDriverManager:
                 self._driver = None
                 self._created_at = None
     
+    def cleanup(self):
+        """Método público para limpiar el WebDriver"""
+        self._cleanup()
+    
     def get_status(self):
         """Obtiene el estado del WebDriver"""
         if self._driver is None:
@@ -243,26 +248,21 @@ class SunatScraper:
                 "fechaDesde": "Sin datos"
             }
             
-            # Extraer información adicional según el modo usando paralelismo
+            # Extraer información adicional según el modo
             if modo_rapido:
-                # PARALELISMO: Extraer trabajadores y representantes simultáneamente
-                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
-                    # Ejecutar ambas extracciones en paralelo
-                    future_trabajadores = executor.submit(self._extraer_cantidad_trabajadores_rapido, driver)
-                    future_representante = executor.submit(self._extraer_representante_legal_rapido, driver)
-                    
-                    # Obtener resultados con timeout
-                    try:
-                        cantidad_trabajadores, cantidad_prestadores = future_trabajadores.result(timeout=8)
-                        print("✅ Trabajadores extraídos en paralelo")
-                    except Exception as e:
-                        print(f"❌ Error en trabajadores (paralelo): {e}")
-                    
-                    try:
-                        representante_legal = future_representante.result(timeout=8)
-                        print("✅ Representante legal extraído en paralelo")
-                    except Exception as e:
-                        print(f"❌ Error en representante (paralelo): {e}")
+                # Extraer trabajadores en paralelo (solo trabajadores)
+                try:
+                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores_rapido(driver)
+                    print("✅ Trabajadores extraídos")
+                except Exception as e:
+                    print(f"❌ Error en trabajadores: {e}")
+                
+                # Extraer representante legal de forma síncrona
+                try:
+                    representante_legal = self._extraer_representante_legal_sincrono(driver)
+                    print("✅ Representante legal extraído")
+                except Exception as e:
+                    print(f"❌ Error en representante: {e}")
             else:
                 # Modo completo: usar métodos originales
                 try:
@@ -304,7 +304,7 @@ class SunatScraper:
 
     def close(self):
         """Cierra el WebDriver del singleton. Solo usar al finalizar la aplicación."""
-        self.driver_manager._cleanup()
+        self.driver_manager.cleanup()
 
     def _extraer_datos_basicos(self, driver) -> Dict:
         """Extrae los datos básicos del RUC - OPTIMIZADO"""
@@ -429,77 +429,7 @@ class SunatScraper:
             return elemento_td_padrones.text != "NINGUNO"
         except:
             return False
-
-    def _extraer_domicilio_fiscal(self, driver) -> Dict:
-        """Extrae y procesa la información del domicilio fiscal"""
-        try:
-            xpath_domicilio_fiscal = "//h4[contains(text(), 'Domicilio Fiscal:')]/parent::div/following-sibling::div/p"
-            elemento_p_domicilio_fiscal = driver.find_element(By.XPATH, xpath_domicilio_fiscal)
-            texto_completo_domicilio_fiscal = elemento_p_domicilio_fiscal.text
-
-            direccion = "No especificado"
-            departamento = "No especificado"
-            provincia = "No especificado"
-            distrito = "No especificado"
-
-            if texto_completo_domicilio_fiscal != "-":
-                partes = texto_completo_domicilio_fiscal.rsplit("-", 2)
-                if len(partes) == 3:
-                    distrito = partes[2].strip()
-                    provincia = partes[1].strip()
-                    direccion_y_depto = partes[0].strip()
-
-                    partes_direccion = direccion_y_depto.rsplit(" ", 1)
-                    if len(partes_direccion) == 2:
-                        departamento = partes_direccion[1].strip()
-                        direccion = partes_direccion[0].strip()
-                    else:
-                        direccion = direccion_y_depto
-                else:
-                    direccion = texto_completo_domicilio_fiscal.strip()
-
-            return {
-                "direccion": direccion,
-                "departamento": departamento,
-                "provincia": provincia,
-                "distrito": distrito
-            }
-        except Exception as e:
-            print(f"Error al extraer domicilio fiscal: {e}")
-            return {
-                "direccion": "Sin datos",
-                "departamento": "Sin datos",
-                "provincia": "Sin datos",
-                "distrito": "Sin datos"
-            }
-
-    def _extraer_actividad_economica(self, driver) -> str:
-        """Extrae la actividad económica"""
-        try:
-            xpath_rubro = "//h4[contains(text(), 'Actividad(es) Económica(s):')]/parent::div/following-sibling::div/table/tbody/tr/td"
-            elemento_td_rubro = driver.find_element(By.XPATH, xpath_rubro)
-            texto_completo_rubro = elemento_td_rubro.text
-            
-            partes_rubro = texto_completo_rubro.rsplit(" - ")
-            if len(partes_rubro) > 1:
-                return partes_rubro[-1].strip()
-            else:
-                return "Sin datos"
-        except Exception as e:
-            print(f"Error al extraer actividad económica: {e}")
-            return "Sin datos"
-
-    def _extraer_padrones(self, driver) -> bool:
-        """Extrae información de padrones"""
-        try:
-            xpath_padrones = "//h4[contains(text(), 'Padrones:')]/parent::div/following-sibling::div/table/tbody/tr/td"
-            elemento_td_padrones = driver.find_element(By.XPATH, xpath_padrones)
-            texto_completo_padrones = elemento_td_padrones.text
-            return texto_completo_padrones != "NINGUNO"
-        except Exception as e:
-            print(f"Error al extraer padrones: {e}")
-            return False
-
+        
     def _extraer_cantidad_trabajadores_rapido(self, driver) -> tuple:
         """Extrae la cantidad de trabajadores y prestadores de servicio - VERSIÓN ULTRA RÁPIDA CON PARALELISMO"""
         try:
@@ -519,19 +449,23 @@ class SunatScraper:
                 cantidad_trabajadores = "Sin datos"
                 cantidad_prestadores_servicio = "Sin datos"
                 
-                # Buscar filas inmediatamente
-                filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
-                
-                if len(filas) > 0:
-                    try:
-                        ultima_fila = filas[-1]
-                        celdas = ultima_fila.find_elements(By.TAG_NAME, "td")
-                        
-                        if len(celdas) >= 4:
-                            cantidad_trabajadores = celdas[1].text.strip()
-                            cantidad_prestadores_servicio = celdas[3].text.strip()
-                    except:
-                        pass  # Ignorar errores de lectura
+                try:
+                    # Buscar filas con manejo de elementos obsoletos
+                    filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
+                    
+                    if len(filas) > 0:
+                        try:
+                            # Obtener la última fila con manejo de elementos obsoletos
+                            ultima_fila = filas[-1]
+                            celdas = ultima_fila.find_elements(By.TAG_NAME, "td")
+                            
+                            if len(celdas) >= 4:
+                                cantidad_trabajadores = celdas[1].text.strip()
+                                cantidad_prestadores_servicio = celdas[3].text.strip()
+                        except:
+                            pass  # Ignorar errores de lectura
+                except Exception as e:
+                    print(f"Error al procesar filas de trabajadores: {e}")
 
                 # Volver inmediatamente sin esperas
                 try:
@@ -542,7 +476,8 @@ class SunatScraper:
 
                 return cantidad_trabajadores, cantidad_prestadores_servicio
             
-        except:
+        except Exception as e:
+            print(f"Error en _extraer_cantidad_trabajadores_rapido: {e}")
             return "Sin datos", "Sin datos"
 
     def _extraer_cantidad_trabajadores(self, driver) -> tuple:
@@ -595,6 +530,73 @@ class SunatScraper:
             print(f"Error al extraer cantidad de trabajadores: {e}")
             return "Sin datos", "Sin datos"
 
+    def _extraer_representante_legal_sincrono(self, driver) -> Dict:
+        """Extrae información del representante legal - VERSIÓN SÍNCRONA"""
+        try:
+            # Hacer clic en representantes legales con timeout corto
+            btn_representates_legales = WebDriverWait(driver, 3).until(
+                EC.element_to_be_clickable((By.CLASS_NAME, "btnInfRepLeg"))
+            )
+            btn_representates_legales.click()
+
+            # Esperar tabla con timeout muy corto
+            WebDriverWait(driver, 4).until(
+                EC.presence_of_element_located((By.XPATH, "//table[@class='table']//tbody/tr"))
+            )
+
+            # Valores por defecto
+            documento_representante = "Sin datos"
+            nro_documento_representante = "Sin datos"
+            nombre_representante = "Sin datos"
+            cargo_representante = "Sin datos"
+            fecha_representante = "Sin datos"
+            
+            try:
+                # Obtener filas inmediatamente
+                filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
+                
+                # Buscar gerente o usar primera fila rápidamente
+                fila_seleccionada = None
+                for fila in filas[:3]:  # Solo revisar las primeras 3 filas
+                    celdas = fila.find_elements(By.TAG_NAME, "td")
+                    if len(celdas) >= 4 and "GERENTE" in celdas[3].text.upper():
+                        fila_seleccionada = fila
+                        break
+                
+                # Si no encuentra gerente, usar primera fila
+                if not fila_seleccionada and len(filas) > 0:
+                    fila_seleccionada = filas[0]
+                
+                if fila_seleccionada:
+                    celdas = fila_seleccionada.find_elements(By.TAG_NAME, "td")
+                    if len(celdas) >= 5:
+                        documento_representante = celdas[0].text.strip()
+                        nro_documento_representante = celdas[1].text.strip()
+                        nombre_representante = celdas[2].text.strip()
+                        cargo_representante = celdas[3].text.strip()
+                        fecha_representante = celdas[4].text.strip()
+                    
+            except Exception as e:
+                print(f"Error leyendo representante: {e}")
+
+            return {
+                "tipoDocumento": documento_representante,
+                "nroDocumento": nro_documento_representante,
+                "nombre": nombre_representante,
+                "cargo": cargo_representante,
+                "fechaDesde": fecha_representante
+            }
+            
+        except Exception as e:
+            print(f"Error rápido en representante: {e}")
+            return {
+                "tipoDocumento": "Sin datos",
+                "nroDocumento": "Sin datos",
+                "nombre": "Sin datos",
+                "cargo": "Sin datos",
+                "fechaDesde": "Sin datos"
+            }
+
     def _extraer_representante_legal_rapido(self, driver) -> Dict:
         """Extrae información del representante legal - VERSIÓN ULTRA RÁPIDA CON PARALELISMO"""
         try:
@@ -619,22 +621,65 @@ class SunatScraper:
                 fecha_representante = "Sin datos"
                 
                 try:
-                    # Obtener filas inmediatamente
+                    # Obtener filas con manejo de elementos obsoletos
                     filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
                     
-                    # Usar primera fila directamente (más rápido)
-                    if len(filas) > 0:
-                        fila_seleccionada = filas[0]
-                        celdas = fila_seleccionada.find_elements(By.TAG_NAME, "td")
-                        if len(celdas) >= 5:
-                            documento_representante = celdas[0].text.strip()
-                            nro_documento_representante = celdas[1].text.strip()
-                            nombre_representante = celdas[2].text.strip()
-                            cargo_representante = celdas[3].text.strip()
-                            fecha_representante = celdas[4].text.strip()
-                        
+                    # Buscar GERENTE GENERAL específicamente
+                    fila_seleccionada = None
+                    for i, fila in enumerate(filas):
+                        try:
+                            celdas = fila.find_elements(By.TAG_NAME, "td")
+                            if len(celdas) >= 4:
+                                cargo_texto = celdas[3].text.strip().upper()
+                                if "GERENTE GENERAL" in cargo_texto:
+                                    fila_seleccionada = i
+                                    break
+                        except:
+                            continue  # Ignorar elementos obsoletos
+                    
+                    # Si no encuentra GERENTE GENERAL, buscar cualquier GERENTE
+                    if fila_seleccionada is None:
+                        for i, fila in enumerate(filas):
+                            try:
+                                celdas = fila.find_elements(By.TAG_NAME, "td")
+                                if len(celdas) >= 4:
+                                    cargo_texto = celdas[3].text.strip().upper()
+                                    if "GERENTE" in cargo_texto:
+                                        fila_seleccionada = i
+                                        break
+                            except:
+                                continue  # Ignorar elementos obsoletos
+                    
+                    # Si no encuentra gerente, usar primera fila
+                    if fila_seleccionada is None and len(filas) > 0:
+                        fila_seleccionada = 0
+                    
+                    # Extraer datos de la fila seleccionada
+                    if fila_seleccionada is not None and fila_seleccionada < len(filas):
+                        try:
+                            # Obtener la fila nuevamente para evitar elementos obsoletos
+                            filas_actualizadas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
+                            if fila_seleccionada < len(filas_actualizadas):
+                                fila_actual = filas_actualizadas[fila_seleccionada]
+                                celdas = fila_actual.find_elements(By.TAG_NAME, "td")
+                                if len(celdas) >= 5:
+                                    documento_representante = celdas[0].text.strip()
+                                    nro_documento_representante = celdas[1].text.strip()
+                                    nombre_representante = celdas[2].text.strip()
+                                    cargo_representante = celdas[3].text.strip()
+                                    fecha_representante = celdas[4].text.strip()
+                        except:
+                            pass  # Ignorar errores de lectura
+                            
+                except Exception as e:
+                    print(f"Error al procesar filas de representantes: {e}")
+
+                # Volver inmediatamente sin esperas
+                try:
+                    btn_volver = driver.find_element(By.CLASS_NAME, "btnNuevaConsulta")
+                    btn_volver.click()
                 except:
-                    pass  # Ignorar errores de lectura
+                    pass  # Ignorar errores de navegación
 
                 return {
                     "tipoDocumento": documento_representante,
@@ -643,76 +688,9 @@ class SunatScraper:
                     "cargo": cargo_representante,
                     "fechaDesde": fecha_representante
                 }
-            
-        except:
-            return {
-                "tipoDocumento": "Sin datos",
-                "nroDocumento": "Sin datos",
-                "nombre": "Sin datos",
-                "cargo": "Sin datos",
-                "fechaDesde": "Sin datos"
-            }
 
-    def _extraer_representante_legal(self, driver) -> Dict:
-        """Extrae información del representante legal"""
-        try:
-            # Hacer clic en el botón de representantes legales
-            btn_representates_legales = WebDriverWait(driver, 8).until(
-                EC.element_to_be_clickable((By.CLASS_NAME, "btnInfRepLeg"))
-            )
-            btn_representates_legales.click()
-            time.sleep(1)  # Reducir tiempo de espera
-
-            # Esperar a que la tabla aparezca
-            WebDriverWait(driver, 10).until(
-                EC.presence_of_element_located((By.XPATH, "//table[@class='table']//tbody/tr"))
-            )
-
-            # Inicializar variables del representante legal
-            documento_representante = "Sin datos"
-            nro_documento_representante = "Sin datos"
-            nombre_representante = "Sin datos"
-            cargo_representante = "Sin datos"
-            fecha_representante = "Sin datos"
-            
-            try:
-                # Obtener todas las filas de una vez
-                filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
-                
-                # Buscar primero GERENTE GENERAL
-                fila_gerente = None
-                for fila in filas:
-                    celdas = fila.find_elements(By.TAG_NAME, "td")
-                    if len(celdas) >= 4 and "GERENTE" in celdas[3].text.upper():
-                        fila_gerente = fila
-                        break
-                
-                # Si no se encuentra gerente, usar la primera fila
-                if not fila_gerente and len(filas) > 0:
-                    fila_gerente = filas[0]
-                
-                if fila_gerente:
-                    celdas = fila_gerente.find_elements(By.TAG_NAME, "td")
-                    if len(celdas) >= 5:
-                        documento_representante = celdas[0].text.strip()
-                        nro_documento_representante = celdas[1].text.strip()
-                        nombre_representante = celdas[2].text.strip()
-                        cargo_representante = celdas[3].text.strip()
-                        fecha_representante = celdas[4].text.strip()
-                    
-            except Exception as e:
-                print(f"Error al extraer datos de representantes legales: {e}")
-
-            return {
-                "tipoDocumento": documento_representante,
-                "nroDocumento": nro_documento_representante,
-                "nombre": nombre_representante,
-                "cargo": cargo_representante,
-                "fechaDesde": fecha_representante
-            }
-            
         except Exception as e:
-            print(f"Error al extraer representante legal: {e}")
+            print(f"Error en _extraer_representante_legal_rapido: {e}")
             return {
                 "tipoDocumento": "Sin datos",
                 "nroDocumento": "Sin datos",
@@ -720,6 +698,7 @@ class SunatScraper:
                 "cargo": "Sin datos",
                 "fechaDesde": "Sin datos"
             }
+
 
     def _crear_respuesta_error(self, ruc_numero: str, error_msg: str) -> Dict:
         """Crea una respuesta de error estandarizada"""
