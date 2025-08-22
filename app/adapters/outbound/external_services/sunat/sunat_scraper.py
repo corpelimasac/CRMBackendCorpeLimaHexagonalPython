@@ -55,7 +55,7 @@ class SunatScraper:
                 ]
                 
                 selenium_paths = glob.glob('/opt/selenium/chromedriver-*/chromedriver')
-                chromedriver_paths.extend(selenium_paths)
+                chromedriver_paths.extend(selenium_paths) 
                 
                 chromedriver_path = None
                 for path in chromedriver_paths:
