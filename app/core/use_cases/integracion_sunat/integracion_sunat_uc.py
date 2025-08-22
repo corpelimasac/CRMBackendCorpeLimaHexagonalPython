@@ -14,7 +14,7 @@ class IntegracionSunatUC:
     def __init__(self, sunat_scraper: SunatScraper):
         self.sunat_scraper = sunat_scraper
 
-    async def obtener_ruc(self, ruc: str, max_intentos: int = 2) -> Dict:
+    async def obtener_ruc(self, ruc: str, max_intentos: int = 1) -> Dict:
         """
         Obtiene información de un RUC desde SUNAT con mecanismo de reintentos
         
@@ -65,9 +65,9 @@ class IntegracionSunatUC:
                 print(f"Error en intento {intento}: {ultimo_error}")
                 
                 if intento < max_intentos:
-                    print(f"Reintentando en 2 segundos...")
+                    print(f"Reintentando en 1 segundo...")
                     import asyncio
-                    await asyncio.sleep(2)
+                    await asyncio.sleep(1)
                     continue
         
         # Si llegamos aquí, todos los intentos fallaron

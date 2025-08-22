@@ -11,93 +11,182 @@ from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from typing import Dict, Optional
 import logging
+import concurrent.futures
+import threading
+from queue import Queue
+from datetime import datetime, timedelta
+import atexit
 # Agrega esta línea al inicio de tu archivo, después de los imports
 logging.getLogger('webdriver_manager').setLevel(logging.ERROR)
-class SunatScraper:
+
+class WebDriverManager:
     """
-    Servicio para realizar web scraping en la página de SUNAT
+    Singleton para manejar una única instancia de WebDriver que se mantiene activa por 12 horas
     """
+    _instance = None
+    _lock = threading.Lock()
+    _driver = None
+    _created_at = None
+    _max_lifetime_hours = 12
     
-    def __init__(self):
-        self.url = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp"
-        self.driver = None
-
-
-    def _get_chrome_options(self) -> ChromeOptions:
-        """
-        Configura las opciones de Chrome para realizar web scraping en la página de SUNAT
-        """
-        # Configurar opciones de Chrome optimizadas para velocidad máxima
-        options = ChromeOptions()
+    def __new__(cls):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(WebDriverManager, cls).__new__(cls)
+                    # Registrar función de limpieza al salir
+                    atexit.register(cls._cleanup)
+        return cls._instance
+    
+    def get_driver(self):
+        """Obtiene el WebDriver, creándolo si es necesario o si ha expirado"""
+        with self._lock:
+            # Verificar si el driver existe y no ha expirado
+            if self._driver is not None and not self._is_expired():
+                return self._driver
             
-            # User-Agent ligero
+            # Si el driver existe pero ha expirado, cerrarlo
+            if self._driver is not None:
+                print("🔄 WebDriver expirado, cerrando y creando nueva instancia...")
+                self._cleanup()
+            
+            # Crear nueva instancia
+            print("🚀 Creando nueva instancia de WebDriver (válida por 12 horas)...")
+            self._driver = self._create_driver()
+            self._created_at = datetime.now()
+            return self._driver
+    
+    def _is_expired(self):
+        """Verifica si el WebDriver ha expirado (más de 12 horas)"""
+        if self._created_at is None:
+            return True
+        
+        elapsed = datetime.now() - self._created_at
+        return elapsed.total_seconds() > (self._max_lifetime_hours * 3600)
+    
+    def _create_driver(self):
+        """Crea una nueva instancia de WebDriver"""
+        options = self._get_chrome_options()
+        
+        # Usar ChromeDriver del sistema para mayor velocidad
+        try:
+            service = ChromeService(executable_path="/usr/bin/chromedriver")
+            driver = webdriver.Chrome(service=service, options=options)
+        except:
+            # Fallback a WebDriverManager si no está disponible
+            service = ChromeService(executable_path=ChromeDriverManager().install())
+            driver = webdriver.Chrome(service=service, options=options)
+        
+        # Timeouts ULTRA RÁPIDOS para Railway
+        driver.set_page_load_timeout(8)
+        driver.implicitly_wait(2)
+        
+        return driver
+    
+    def _get_chrome_options(self) -> ChromeOptions:
+        """Configura las opciones de Chrome para máxima velocidad en Railway"""
+        options = ChromeOptions()
+        
+        # User-Agent optimizado para Linux
         user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         options.add_argument(f'user-agent={user_agent}')
-            
-            # Opciones críticas para máxima velocidad
-        options.add_argument("--headless")
+        
+        # Configuración ULTRA RÁPIDA para Railway
+        options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--disable-software-rasterizer")
-
-        options.add_argument('--log-level=3')
-            
-            # Deshabilitar todo lo innecesario para velocidad
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-plugins")
-        options.add_argument("--disable-images")
-
-        options.add_argument("--disable-css")
-        options.add_argument("--disable-web-security")
-        options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
-        options.add_argument("--disable-background-networking")
         options.add_argument("--disable-background-timer-throttling")
         options.add_argument("--disable-renderer-backgrounding")
         options.add_argument("--disable-backgrounding-occluded-windows")
-        options.add_argument("--disable-client-side-phishing-detection")
+        options.add_argument("--disable-background-networking")
         options.add_argument("--disable-sync")
         options.add_argument("--disable-default-apps")
         options.add_argument("--no-first-run")
         options.add_argument("--no-default-browser-check")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-images")
+        options.add_argument("--disable-css")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
+        options.add_argument("--disable-client-side-phishing-detection")
         options.add_argument("--disable-logging")
         options.add_argument("--disable-gpu-logging")
-            
-            # Optimizaciones de memoria y red
+        options.add_argument("--log-level=3")
+        options.add_argument("--silent")
+        options.add_argument("--disable-blink-features=AutomationControlled")
+        
+        # Optimizaciones de memoria y red
         options.add_argument("--memory-pressure-off")
         options.add_argument("--aggressive-cache-discard")
-        options.add_argument("--window-size=800,600")  # Ventana más pequeña
-            
-            # Estrategia de carga más agresiva
+        options.add_argument("--window-size=800,600")
         options.add_argument("--page-load-strategy=eager")
-            
-            # Configurar prefs para máxima velocidad
+        
+        # Configurar prefs para velocidad máxima
         prefs = {
-                "profile.managed_default_content_settings.images": 2,
-                "profile.default_content_setting_values.notifications": 2,
-                "profile.managed_default_content_settings.media_stream": 2,
-                "profile.default_content_settings.popups": 0,
-                "profile.managed_default_content_settings.geolocation": 2,
-                "profile.default_content_setting_values.plugins": 2,
-                "profile.managed_default_content_settings.stylesheets": 2,
-                "profile.managed_default_content_settings.javascript": 1,  # Permitir JS mínimo
-            }
+            "profile.managed_default_content_settings.images": 2,
+            "profile.default_content_setting_values.notifications": 2,
+            "profile.managed_default_content_settings.media_stream": 2,
+            "profile.default_content_settings.popups": 0,
+            "profile.managed_default_content_settings.geolocation": 2,
+            "profile.default_content_setting_values.plugins": 2,
+            "profile.managed_default_content_settings.stylesheets": 2,
+            "profile.managed_default_content_settings.javascript": 1,
+            "profile.managed_default_content_settings.cookies": 2,
+            "profile.managed_default_content_settings.popups": 2,
+            "profile.managed_default_content_settings.geolocation": 2,
+            "profile.managed_default_content_settings.media_stream": 2,
+        }
         options.add_experimental_option("prefs", prefs)
-            
-            # Anti-detección mínima
-        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        
+        # Anti-detección
+        options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         options.add_experimental_option('useAutomationExtension', False)
         
         return options
     
-    def _start_driver(self):
-        """Inicia el WebDriver si aún no está activo."""
-        if self.driver is None:
-            print("Iniciando instancia única de WebDriver (esto solo pasa una vez)...")
-            options = self._get_chrome_options()
-            service = ChromeService(executable_path=ChromeDriverManager().install())
-            self.driver = webdriver.Chrome(service=service, options=options)
-            self.driver.set_page_load_timeout(15)
+    def _cleanup(self):
+        """Limpia el WebDriver"""
+        if self._driver is not None:
+            try:
+                print("🧹 Cerrando WebDriver...")
+                self._driver.quit()
+            except:
+                pass
+            finally:
+                self._driver = None
+                self._created_at = None
+    
+    def get_status(self):
+        """Obtiene el estado del WebDriver"""
+        if self._driver is None:
+            return "No inicializado"
+        
+        if self._is_expired():
+            return "Expirado"
+        
+        elapsed = datetime.now() - self._created_at
+        remaining = timedelta(hours=self._max_lifetime_hours) - elapsed
+        return f"Activo (restan {remaining})"
+
+class SunatScraper:
+    """
+    Servicio para realizar web scraping en la página de SUNAT usando WebDriverManager singleton
+    """
+    
+    def __init__(self):
+        self.url = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp"
+        self.driver_manager = WebDriverManager()
+    
+    def get_driver(self):
+        """Obtiene el WebDriver del manager singleton"""
+        return self.driver_manager.get_driver()
+    
+    def get_driver_status(self):
+        """Obtiene el estado del WebDriver"""
+        return self.driver_manager.get_status()
     
     def consultar_ruc(self, ruc_numero: str, modo_rapido: bool = True) -> Dict:
         """
@@ -112,24 +201,25 @@ class SunatScraper:
         """
         
         try:
-
-            self._start_driver()
-
-         # 2. Realiza la consulta usando self.driver
+            # Obtener el driver del singleton (se crea automáticamente si es necesario)
+            driver = self.get_driver()
+            
+            # 2. Realiza la consulta usando el driver del singleton
             print(f"Consultando RUC {ruc_numero}...")
-            self.driver.get(self.url)
+            driver.get(self.url)
 
-            ruc_input = WebDriverWait(self.driver, 10).until(
+            # Timeouts ULTRA RÁPIDOS
+            ruc_input = WebDriverWait(driver, 3).until(
                 EC.presence_of_element_located((By.ID, "txtRuc"))
             )
 
             ruc_input.send_keys(ruc_numero)
 
-            btn_consultar = self.driver.find_element(By.ID, "btnAceptar")
+            btn_consultar = driver.find_element(By.ID, "btnAceptar")
             btn_consultar.click()
-            # Intentar usar ChromeDriver del sistema primero, luego WebDriverManager
 
-            WebDriverWait(self.driver, 10).until(
+            # Esperar resultados con timeout reducido
+            WebDriverWait(driver, 5).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "list-group"))
             )
 
@@ -140,9 +230,9 @@ class SunatScraper:
 
 
             # Extraer información básica (siempre necesaria)
-            datos_basicos = self._extraer_datos_basicos(self.driver)
+            datos_basicos = self._extraer_datos_basicos(driver)
             
-            # Extraer información adicional de forma paralela y rápida
+            # Extraer información adicional usando PARALELISMO
             cantidad_trabajadores = "Sin datos"
             cantidad_prestadores = "Sin datos"
             representante_legal = {
@@ -153,31 +243,37 @@ class SunatScraper:
                 "fechaDesde": "Sin datos"
             }
             
-            # Extraer información adicional según el modo
+            # Extraer información adicional según el modo usando paralelismo
             if modo_rapido:
-                # Modo rápido: intentar con timeouts muy cortos
-                try:
-                    print("Extrayendo cantidad de trabajadores (modo rápido)...")
-                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores_rapido(self.driver)
-                except Exception as e:
-                    print(f"Omitiendo trabajadores por velocidad: {e}")
-                
-                try:
-                    print("Extrayendo representante legal (modo rápido)...")
-                    representante_legal = self._extraer_representante_legal_rapido(self.driver)
-                except Exception as e:
-                    print(f"Omitiendo representante legal por velocidad: {e}")
+                # PARALELISMO: Extraer trabajadores y representantes simultáneamente
+                with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+                    # Ejecutar ambas extracciones en paralelo
+                    future_trabajadores = executor.submit(self._extraer_cantidad_trabajadores_rapido, driver)
+                    future_representante = executor.submit(self._extraer_representante_legal_rapido, driver)
+                    
+                    # Obtener resultados con timeout
+                    try:
+                        cantidad_trabajadores, cantidad_prestadores = future_trabajadores.result(timeout=8)
+                        print("✅ Trabajadores extraídos en paralelo")
+                    except Exception as e:
+                        print(f"❌ Error en trabajadores (paralelo): {e}")
+                    
+                    try:
+                        representante_legal = future_representante.result(timeout=8)
+                        print("✅ Representante legal extraído en paralelo")
+                    except Exception as e:
+                        print(f"❌ Error en representante (paralelo): {e}")
             else:
                 # Modo completo: usar métodos originales
                 try:
                     print("Extrayendo cantidad de trabajadores (modo completo)...")
-                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores(self.driver)
+                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores(driver)
                 except Exception as e:
                     print(f"Error al extraer trabajadores: {e}")
                 
                 try:
                     print("Extrayendo representante legal (modo completo)...")
-                    representante_legal = self._extraer_representante_legal(self.driver)
+                    representante_legal = self._extraer_representante_legal(driver)
                 except Exception as e:
                     print(f"Error al extraer representante legal: {e}")
 
@@ -204,15 +300,11 @@ class SunatScraper:
             
         except Exception as e:
             print(f"Error al consultar RUC {ruc_numero}: {e}")
-            self.close()
             return self._crear_respuesta_error(ruc_numero, str(e))
 
     def close(self):
-        """Cierra el navegador y limpia la instancia. Debe llamarse al final."""
-        if self.driver:
-            print("Cerrando la instancia de WebDriver...")
-            self.driver.quit()
-            self.driver = None
+        """Cierra el WebDriver del singleton. Solo usar al finalizar la aplicación."""
+        self.driver_manager._cleanup()
 
     def _extraer_datos_basicos(self, driver) -> Dict:
         """Extrae los datos básicos del RUC - OPTIMIZADO"""
@@ -409,48 +501,48 @@ class SunatScraper:
             return False
 
     def _extraer_cantidad_trabajadores_rapido(self, driver) -> tuple:
-        """Extrae la cantidad de trabajadores y prestadores de servicio - VERSIÓN RÁPIDA"""
+        """Extrae la cantidad de trabajadores y prestadores de servicio - VERSIÓN ULTRA RÁPIDA CON PARALELISMO"""
         try:
-            # Hacer clic en el botón con timeout muy corto
-            btn_consultar = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CLASS_NAME, "btnInfNumTra"))
-            )
-            btn_consultar.click()
+            # Usar lock para evitar conflictos en navegación paralela
+            with threading.Lock():
+                # Timeout ULTRA RÁPIDO
+                btn_consultar = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.CLASS_NAME, "btnInfNumTra"))
+                )
+                btn_consultar.click()
 
-            # Esperar tabla con timeout reducido
-            WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.NAME, "formEnviar"))
-            )
+                # Esperar tabla con timeout mínimo
+                WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.NAME, "formEnviar"))
+                )
 
-            cantidad_trabajadores = "Sin datos"
-            cantidad_prestadores_servicio = "Sin datos"
-            
-            # Buscar filas inmediatamente sin espera extra
-            filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
-            
-            if len(filas) > 0:
+                cantidad_trabajadores = "Sin datos"
+                cantidad_prestadores_servicio = "Sin datos"
+                
+                # Buscar filas inmediatamente
+                filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
+                
+                if len(filas) > 0:
+                    try:
+                        ultima_fila = filas[-1]
+                        celdas = ultima_fila.find_elements(By.TAG_NAME, "td")
+                        
+                        if len(celdas) >= 4:
+                            cantidad_trabajadores = celdas[1].text.strip()
+                            cantidad_prestadores_servicio = celdas[3].text.strip()
+                    except:
+                        pass  # Ignorar errores de lectura
+
+                # Volver inmediatamente sin esperas
                 try:
-                    ultima_fila = filas[-1]
-                    celdas = ultima_fila.find_elements(By.TAG_NAME, "td")
-                    
-                    if len(celdas) >= 4:
-                        cantidad_trabajadores = celdas[1].text.strip()
-                        cantidad_prestadores_servicio = celdas[3].text.strip()
-                except Exception as e:
-                    print(f"Error leyendo tabla: {e}")
+                    btn_volver = driver.find_element(By.CLASS_NAME, "btnNuevaConsulta")
+                    btn_volver.click()
+                except:
+                    pass  # Ignorar errores de navegación
 
-            # Volver rápidamente sin esperas
-            try:
-                btn_volver = driver.find_element(By.CLASS_NAME, "btnNuevaConsulta")
-                btn_volver.click()
-                # Sin sleep - continuar inmediatamente
-            except:
-                pass  # Ignorar errores de navegación
-
-            return cantidad_trabajadores, cantidad_prestadores_servicio
+                return cantidad_trabajadores, cantidad_prestadores_servicio
             
-        except Exception as e:
-            print(f"Error rápido en trabajadores: {e}")
+        except:
             return "Sin datos", "Sin datos"
 
     def _extraer_cantidad_trabajadores(self, driver) -> tuple:
@@ -504,64 +596,55 @@ class SunatScraper:
             return "Sin datos", "Sin datos"
 
     def _extraer_representante_legal_rapido(self, driver) -> Dict:
-        """Extrae información del representante legal - VERSIÓN RÁPIDA"""
+        """Extrae información del representante legal - VERSIÓN ULTRA RÁPIDA CON PARALELISMO"""
         try:
-            # Hacer clic en representantes legales con timeout corto
-            btn_representates_legales = WebDriverWait(driver, 3).until(
-                EC.element_to_be_clickable((By.CLASS_NAME, "btnInfRepLeg"))
-            )
-            btn_representates_legales.click()
+            # Usar lock para evitar conflictos en navegación paralela
+            with threading.Lock():
+                # Timeout ULTRA RÁPIDO
+                btn_representates_legales = WebDriverWait(driver, 2).until(
+                    EC.element_to_be_clickable((By.CLASS_NAME, "btnInfRepLeg"))
+                )
+                btn_representates_legales.click()
 
-            # Esperar tabla con timeout muy corto
-            WebDriverWait(driver, 4).until(
-                EC.presence_of_element_located((By.XPATH, "//table[@class='table']//tbody/tr"))
-            )
+                # Esperar tabla con timeout mínimo
+                WebDriverWait(driver, 3).until(
+                    EC.presence_of_element_located((By.XPATH, "//table[@class='table']//tbody/tr"))
+                )
 
-            # Valores por defecto
-            documento_representante = "Sin datos"
-            nro_documento_representante = "Sin datos"
-            nombre_representante = "Sin datos"
-            cargo_representante = "Sin datos"
-            fecha_representante = "Sin datos"
-            
-            try:
-                # Obtener filas inmediatamente
-                filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
+                # Valores por defecto
+                documento_representante = "Sin datos"
+                nro_documento_representante = "Sin datos"
+                nombre_representante = "Sin datos"
+                cargo_representante = "Sin datos"
+                fecha_representante = "Sin datos"
                 
-                # Buscar gerente o usar primera fila rápidamente
-                fila_seleccionada = None
-                for fila in filas[:3]:  # Solo revisar las primeras 3 filas
-                    celdas = fila.find_elements(By.TAG_NAME, "td")
-                    if len(celdas) >= 4 and "GERENTE" in celdas[3].text.upper():
-                        fila_seleccionada = fila
-                        break
-                
-                # Si no encuentra gerente, usar primera fila
-                if not fila_seleccionada and len(filas) > 0:
-                    fila_seleccionada = filas[0]
-                
-                if fila_seleccionada:
-                    celdas = fila_seleccionada.find_elements(By.TAG_NAME, "td")
-                    if len(celdas) >= 5:
-                        documento_representante = celdas[0].text.strip()
-                        nro_documento_representante = celdas[1].text.strip()
-                        nombre_representante = celdas[2].text.strip()
-                        cargo_representante = celdas[3].text.strip()
-                        fecha_representante = celdas[4].text.strip()
+                try:
+                    # Obtener filas inmediatamente
+                    filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
                     
-            except Exception as e:
-                print(f"Error leyendo representante: {e}")
+                    # Usar primera fila directamente (más rápido)
+                    if len(filas) > 0:
+                        fila_seleccionada = filas[0]
+                        celdas = fila_seleccionada.find_elements(By.TAG_NAME, "td")
+                        if len(celdas) >= 5:
+                            documento_representante = celdas[0].text.strip()
+                            nro_documento_representante = celdas[1].text.strip()
+                            nombre_representante = celdas[2].text.strip()
+                            cargo_representante = celdas[3].text.strip()
+                            fecha_representante = celdas[4].text.strip()
+                        
+                except:
+                    pass  # Ignorar errores de lectura
 
-            return {
-                "tipoDocumento": documento_representante,
-                "nroDocumento": nro_documento_representante,
-                "nombre": nombre_representante,
-                "cargo": cargo_representante,
-                "fechaDesde": fecha_representante
-            }
+                return {
+                    "tipoDocumento": documento_representante,
+                    "nroDocumento": nro_documento_representante,
+                    "nombre": nombre_representante,
+                    "cargo": cargo_representante,
+                    "fechaDesde": fecha_representante
+                }
             
-        except Exception as e:
-            print(f"Error rápido en representante: {e}")
+        except:
             return {
                 "tipoDocumento": "Sin datos",
                 "nroDocumento": "Sin datos",

@@ -1,9 +1,12 @@
 # 1. Usa una imagen base específica y estable (Debian Bookworm)
 FROM python:3.11-bookworm
 
-# Variables de entorno
+# Variables de entorno optimizadas para Railway
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=off
+ENV CHROME_BIN=/usr/bin/google-chrome
+ENV CHROME_PATH=/usr/bin/google-chrome
+ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
 
 # 2. Instalar dependencias del sistema y Google Chrome
 # Actualiza la lista de paquetes e instala dependencias que Chrome necesita
@@ -38,6 +41,12 @@ RUN echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" >
 # Actualiza de nuevo e instala Google Chrome Stable
 RUN apt-get update \
     && apt-get install -y google-chrome-stable --no-install-recommends \
+    # Instalar ChromeDriver compatible
+    && wget -q https://chromedriver.storage.googleapis.com/114.0.5735.90/chromedriver_linux64.zip \
+    && unzip chromedriver_linux64.zip \
+    && mv chromedriver /usr/bin/chromedriver \
+    && chmod +x /usr/bin/chromedriver \
+    && rm chromedriver_linux64.zip \
     # Limpia la caché para reducir el tamaño de la imagen
     && rm -rf /var/lib/apt/lists/*
 
