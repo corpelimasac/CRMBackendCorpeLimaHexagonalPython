@@ -10,8 +10,9 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.common.by import By
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from typing import Dict, Optional
-
-
+import logging
+# Agrega esta línea al inicio de tu archivo, después de los imports
+logging.getLogger('webdriver_manager').setLevel(logging.ERROR)
 class SunatScraper:
     """
     Servicio para realizar web scraping en la página de SUNAT
@@ -19,111 +20,85 @@ class SunatScraper:
     
     def __init__(self):
         self.url = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp"
-    
-    def consultar_ruc_basico(self, ruc_numero: str) -> Dict:
+        self.driver = None
+
+
+    def _get_chrome_options(self) -> ChromeOptions:
         """
-        Consulta ultra-rápida que solo obtiene datos básicos esenciales.
-        
-        Args:
-            ruc_numero (str): Número de RUC a consultar
-            
-        Returns:
-            dict: Diccionario con información básica del RUC
+        Configura las opciones de Chrome para realizar web scraping en la página de SUNAT
         """
-        driver = None
-        try:
-            # Configuración mínima para máxima velocidad
-            options = ChromeOptions()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-images")
-            options.add_argument("--disable-javascript")
-            options.add_argument("--window-size=800,600")
-            options.add_argument("--page-load-strategy=eager")
-
-            # ChromeDriver
-            try:
-                import os
-                import glob
-                
-                chromedriver_paths = [
-                    '/usr/bin/chromedriver',
-                    '/usr/local/bin/chromedriver',
-                    '/opt/chromedriver/chromedriver'
-                ]
-                
-                selenium_paths = glob.glob('/opt/selenium/chromedriver-*/chromedriver')
-                chromedriver_paths.extend(selenium_paths) 
-                
-                chromedriver_path = None
-                for path in chromedriver_paths:
-                    if os.path.exists(path) and os.access(path, os.X_OK):
-                        chromedriver_path = path
-                        break
-                
-                if chromedriver_path:
-                    service = ChromeService(executable_path=chromedriver_path)
-                else:
-                    service = ChromeService(executable_path=ChromeDriverManager().install())
-            except Exception:
-                service = ChromeService(executable_path=ChromeDriverManager().install())
-
-            driver = webdriver.Chrome(service=service, options=options)
+        # Configurar opciones de Chrome optimizadas para velocidad máxima
+        options = ChromeOptions()
             
-            # Timeouts ultra-cortos
-            driver.set_page_load_timeout(8)
-            driver.implicitly_wait(0.5)
-
-            # Navegación y consulta
-            driver.get(self.url)
+            # User-Agent ligero
+        user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+        options.add_argument(f'user-agent={user_agent}')
             
-            ruc_input = WebDriverWait(driver, 5).until(
-                EC.presence_of_element_located((By.ID, "txtRuc"))
-            )
-            ruc_input.clear()
-            ruc_input.send_keys(ruc_numero)
-            
-            btn_consultar = driver.find_element(By.ID, "btnAceptar")
-            btn_consultar.click()
+            # Opciones críticas para máxima velocidad
+        options.add_argument("--headless")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-software-rasterizer")
 
-            WebDriverWait(driver, 8).until(
-                EC.presence_of_element_located((By.CLASS_NAME, "list-group"))
-            )
-
-            # Solo datos básicos esenciales
-            datos_basicos = self._extraer_datos_basicos(driver)
+        options.add_argument('--log-level=3')
             
-            return {
-                "numeroDocumento": ruc_numero,
-                "razonSocial": datos_basicos.get("razon_social", "Sin datos"),
-                "nombreComercial": datos_basicos.get("nombre_comercial", "-"),
-                "direccion": datos_basicos.get("direccion", "Sin datos"),
-                "distrito": datos_basicos.get("distrito", "Sin datos"),
-                "provincia": datos_basicos.get("provincia", "Sin datos"),
-                "departamento": datos_basicos.get("departamento", "Sin datos"),
-                "fechaInicioActividades": datos_basicos.get("fecha_inicio_actividades", "Sin datos"),
-                "EsAgenteRetencion": datos_basicos.get("es_agente_retencion", False),
-                "actividadEconomica": datos_basicos.get("actividad_economica", "Sin datos"),
-                "tipoContribuyente": datos_basicos.get("tipo_contribuyente", "Sin datos"),
-                "numeroTrabajadores": "Sin datos",  # Omitido por velocidad
-                "prestadoresdeServicios": "Sin datos",  # Omitido por velocidad
-                "representanteLegal": {
-                    "tipoDocumento": "Sin datos",
-                    "nroDocumento": "Sin datos",
-                    "nombre": "Sin datos",
-                    "cargo": "Sin datos",
-                    "fechaDesde": "Sin datos"
-                }
+            # Deshabilitar todo lo innecesario para velocidad
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-plugins")
+        options.add_argument("--disable-images")
+
+        options.add_argument("--disable-css")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-client-side-phishing-detection")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-default-apps")
+        options.add_argument("--no-first-run")
+        options.add_argument("--no-default-browser-check")
+        options.add_argument("--disable-logging")
+        options.add_argument("--disable-gpu-logging")
+            
+            # Optimizaciones de memoria y red
+        options.add_argument("--memory-pressure-off")
+        options.add_argument("--aggressive-cache-discard")
+        options.add_argument("--window-size=800,600")  # Ventana más pequeña
+            
+            # Estrategia de carga más agresiva
+        options.add_argument("--page-load-strategy=eager")
+            
+            # Configurar prefs para máxima velocidad
+        prefs = {
+                "profile.managed_default_content_settings.images": 2,
+                "profile.default_content_setting_values.notifications": 2,
+                "profile.managed_default_content_settings.media_stream": 2,
+                "profile.default_content_settings.popups": 0,
+                "profile.managed_default_content_settings.geolocation": 2,
+                "profile.default_content_setting_values.plugins": 2,
+                "profile.managed_default_content_settings.stylesheets": 2,
+                "profile.managed_default_content_settings.javascript": 1,  # Permitir JS mínimo
             }
+        options.add_experimental_option("prefs", prefs)
             
-        except Exception as e:
-            return self._crear_respuesta_error(ruc_numero, str(e))
-        finally:
-            if driver:
-                driver.quit()
-
+            # Anti-detección mínima
+        options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        options.add_experimental_option('useAutomationExtension', False)
+        
+        return options
+    
+    def _start_driver(self):
+        """Inicia el WebDriver si aún no está activo."""
+        if self.driver is None:
+            print("Iniciando instancia única de WebDriver (esto solo pasa una vez)...")
+            options = self._get_chrome_options()
+            service = ChromeService(executable_path=ChromeDriverManager().install())
+            self.driver = webdriver.Chrome(service=service, options=options)
+            self.driver.set_page_load_timeout(15)
+    
     def consultar_ruc(self, ruc_numero: str, modo_rapido: bool = True) -> Dict:
         """
         Realiza web scraping en la página de la SUNAT para obtener datos de un RUC.
@@ -135,131 +110,37 @@ class SunatScraper:
         Returns:
             dict: Diccionario con toda la información del RUC
         """
-        driver = None
+        
         try:
-            # Configurar opciones de Chrome optimizadas para velocidad máxima
-            options = ChromeOptions()
-            
-            # User-Agent ligero
-            user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-            options.add_argument(f'user-agent={user_agent}')
-            
-            # Opciones críticas para máxima velocidad
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-software-rasterizer")
-            
-            # Deshabilitar todo lo innecesario para velocidad
-            options.add_argument("--disable-extensions")
-            options.add_argument("--disable-plugins")
-            options.add_argument("--disable-images")
-            options.add_argument("--disable-javascript")  # SUNAT funciona sin JS para consultas básicas
-            options.add_argument("--disable-css")
-            options.add_argument("--disable-web-security")
-            options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
-            options.add_argument("--disable-background-networking")
-            options.add_argument("--disable-background-timer-throttling")
-            options.add_argument("--disable-renderer-backgrounding")
-            options.add_argument("--disable-backgrounding-occluded-windows")
-            options.add_argument("--disable-client-side-phishing-detection")
-            options.add_argument("--disable-sync")
-            options.add_argument("--disable-default-apps")
-            options.add_argument("--no-first-run")
-            options.add_argument("--no-default-browser-check")
-            options.add_argument("--disable-logging")
-            options.add_argument("--disable-gpu-logging")
-            
-            # Optimizaciones de memoria y red
-            options.add_argument("--memory-pressure-off")
-            options.add_argument("--aggressive-cache-discard")
-            options.add_argument("--window-size=800,600")  # Ventana más pequeña
-            
-            # Estrategia de carga más agresiva
-            options.add_argument("--page-load-strategy=eager")
-            
-            # Configurar prefs para máxima velocidad
-            prefs = {
-                "profile.managed_default_content_settings.images": 2,
-                "profile.default_content_setting_values.notifications": 2,
-                "profile.managed_default_content_settings.media_stream": 2,
-                "profile.default_content_settings.popups": 0,
-                "profile.managed_default_content_settings.geolocation": 2,
-                "profile.default_content_setting_values.plugins": 2,
-                "profile.managed_default_content_settings.stylesheets": 2,
-                "profile.managed_default_content_settings.javascript": 1,  # Permitir JS mínimo
-            }
-            options.add_experimental_option("prefs", prefs)
-            
-            # Anti-detección mínima
-            options.add_experimental_option("excludeSwitches", ["enable-automation"])
-            options.add_experimental_option('useAutomationExtension', False)
 
-            # Intentar usar ChromeDriver del sistema primero, luego WebDriverManager
-            try:
-                import os
-                import glob
-                
-                # Rutas posibles para ChromeDriver
-                chromedriver_paths = [
-                    '/usr/bin/chromedriver',
-                    '/usr/local/bin/chromedriver',
-                    '/opt/chromedriver/chromedriver'
-                ]
-                
-                # Buscar en directorios de Selenium también
-                selenium_paths = glob.glob('/opt/selenium/chromedriver-*/chromedriver')
-                chromedriver_paths.extend(selenium_paths)
-                
-                chromedriver_path = None
-                for path in chromedriver_paths:
-                    if os.path.exists(path) and os.access(path, os.X_OK):
-                        chromedriver_path = path
-                        break
-                
-                if chromedriver_path:
-                    service = ChromeService(executable_path=chromedriver_path)
-                    print(f"Usando ChromeDriver del sistema: {chromedriver_path}")
-                else:
-                    print("ChromeDriver no encontrado en el sistema, usando WebDriverManager")
-                    service = ChromeService(executable_path=ChromeDriverManager().install())
-                    print("Usando ChromeDriver de WebDriverManager")
-            except Exception as e:
-                print(f"Error configurando ChromeDriver: {e}")
-                print("Fallback a WebDriverManager")
-                service = ChromeService(executable_path=ChromeDriverManager().install())
+            self._start_driver()
 
-            driver = webdriver.Chrome(service=service, options=options)
-            
-            # Configurar timeouts agresivos para velocidad
-            driver.set_page_load_timeout(10)  # Timeout reducido
-            driver.set_script_timeout(5)      # Timeout muy corto para scripts
-            driver.implicitly_wait(1)         # Timeout implícito mínimo
+         # 2. Realiza la consulta usando self.driver
+            print(f"Consultando RUC {ruc_numero}...")
+            self.driver.get(self.url)
 
-            print(f"Consultando RUC {ruc_numero} en SUNAT...")
-            driver.get(self.url)
-
-            # Esperar y llenar el campo de RUC más rápido
-            ruc_input = WebDriverWait(driver, 8).until(
+            ruc_input = WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.ID, "txtRuc"))
             )
-            ruc_input.clear()
+
             ruc_input.send_keys(ruc_numero)
 
-            # Hacer clic en el botón de buscar inmediatamente
-            btn_consultar = driver.find_element(By.ID, "btnAceptar")
+            btn_consultar = self.driver.find_element(By.ID, "btnAceptar")
             btn_consultar.click()
+            # Intentar usar ChromeDriver del sistema primero, luego WebDriverManager
 
-            print("Extrayendo información...")
-
-            # Esperar resultados con timeout reducido
-            WebDriverWait(driver, 12).until(
+            WebDriverWait(self.driver, 10).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "list-group"))
             )
 
+
+
+            print("Extrayendo información...")
+
+
+
             # Extraer información básica (siempre necesaria)
-            datos_basicos = self._extraer_datos_basicos(driver)
+            datos_basicos = self._extraer_datos_basicos(self.driver)
             
             # Extraer información adicional de forma paralela y rápida
             cantidad_trabajadores = "Sin datos"
@@ -277,26 +158,26 @@ class SunatScraper:
                 # Modo rápido: intentar con timeouts muy cortos
                 try:
                     print("Extrayendo cantidad de trabajadores (modo rápido)...")
-                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores_rapido(driver)
+                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores_rapido(self.driver)
                 except Exception as e:
                     print(f"Omitiendo trabajadores por velocidad: {e}")
                 
                 try:
                     print("Extrayendo representante legal (modo rápido)...")
-                    representante_legal = self._extraer_representante_legal_rapido(driver)
+                    representante_legal = self._extraer_representante_legal_rapido(self.driver)
                 except Exception as e:
                     print(f"Omitiendo representante legal por velocidad: {e}")
             else:
                 # Modo completo: usar métodos originales
                 try:
                     print("Extrayendo cantidad de trabajadores (modo completo)...")
-                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores(driver)
+                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores(self.driver)
                 except Exception as e:
                     print(f"Error al extraer trabajadores: {e}")
                 
                 try:
                     print("Extrayendo representante legal (modo completo)...")
-                    representante_legal = self._extraer_representante_legal(driver)
+                    representante_legal = self._extraer_representante_legal(self.driver)
                 except Exception as e:
                     print(f"Error al extraer representante legal: {e}")
 
@@ -323,10 +204,15 @@ class SunatScraper:
             
         except Exception as e:
             print(f"Error al consultar RUC {ruc_numero}: {e}")
+            self.close()
             return self._crear_respuesta_error(ruc_numero, str(e))
-        finally:
-            if driver:
-                driver.quit()
+
+    def close(self):
+        """Cierra el navegador y limpia la instancia. Debe llamarse al final."""
+        if self.driver:
+            print("Cerrando la instancia de WebDriver...")
+            self.driver.quit()
+            self.driver = None
 
     def _extraer_datos_basicos(self, driver) -> Dict:
         """Extrae los datos básicos del RUC - OPTIMIZADO"""

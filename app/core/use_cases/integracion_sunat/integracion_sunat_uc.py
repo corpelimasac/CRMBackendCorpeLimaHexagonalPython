@@ -57,6 +57,7 @@ class IntegracionSunatUC:
                 
                 # Si llegamos aquí, la consulta fue exitosa
                 print(f"Consulta exitosa en intento {intento}")
+                self.sunat_scraper.close()
                 return resultado
                 
             except Exception as e:
