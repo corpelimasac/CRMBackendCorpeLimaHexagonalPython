@@ -16,7 +16,7 @@ class ProveedorContactosModel(Base):
   cargo=Column(VARCHAR(255), nullable=True)
   nombre=Column(VARCHAR(255), nullable=True)
   estado=Column(Boolean, default=True, nullable=True)
-  sexo=Column(VARCHAR(255), nullable=True)
+  sexo=Column(VARCHAR(255), nullable=True) 
 
   # Relación con la tabla de proveedores
   proveedores = relationship(
