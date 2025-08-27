@@ -18,9 +18,10 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
         excel_files = {}
 
         
-        
         # Obtener información de la orden de compra
         resultados = self.ordenes_compra_repo.obtener_info_oc(request)
+
+        print(f"Este es el resultado: {resultados}")
         
         if not resultados:
             return excel_files

@@ -1,122 +1,93 @@
-"""
-Repositorio para órdenes de compra
-"""
+from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
+from app.core.domain.entities.ordenes_compra import OrdenesCompra
 from sqlalchemy.orm import Session
-from sqlalchemy import text, case   
-from typing import Optional, List, Any
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
+from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
+from datetime import datetime
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
+from typing import List, Any
+from sqlalchemy import case, func
 from app.adapters.outbound.database.models.cotizaciones_versiones_model import CotizacionesVersionesModel
 from app.adapters.outbound.database.models.productos_cotizaciones_model import ProductosCotizacionesModel
-from app.adapters.outbound.database.models.productos_model import ProductosModel
 from app.adapters.outbound.database.models.unidad_medida_model import UnidadMedidaModel
 from app.adapters.outbound.database.models.marcas_model import MarcasModel
 from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
-from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
 from app.adapters.outbound.database.models.proveedor_detalle_model import ProveedorDetalleModel
+from app.adapters.outbound.database.models.productos_model import ProductosModel
 from app.adapters.outbound.database.models.intermedia_proveedor_contacto_model import intermedia_proveedor_contacto
-from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
-from app.core.domain.entities.ordenes_compra import OrdenesCompra
+from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
+from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 
-class OrdenesCompraRepository:
-    """
-    Repositorio para manejar las operaciones de base de datos relacionadas con órdenes de compra
-    """
-    
+
+class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
+
     def __init__(self, db: Session):
         self.db = db
-    
-    def crear_orden_compra(self, datos_oc: dict) -> Optional[OrdenesCompraModel]:
-        """
-        Crea una nueva orden de compra en la base de datos
-        
-        Args:
-            datos_oc (dict): Datos de la orden de compra
-            
-        Returns:
-            OrdenesCompraModel: La orden de compra creada o None si hay error
-        """
+
+    def save(self, order: OrdenesCompra) -> OrdenesCompra:
         try:
-            # Crear la nueva orden de compra sin correlativo primero
-            nueva_oc = OrdenesCompraModel(
-                correlative="TEMP",  # Correlativo temporal
-                id_cotizacion=datos_oc.get('id_cotizacion'),
-                id_usuario=datos_oc.get('id_usuario'),
-                ruta_s3=datos_oc.get('ruta_s3'),
-                version=datos_oc.get('version'),
-                activo=True,
-                moneda=datos_oc.get('moneda'),
-                igv=datos_oc.get('igv'),
-                total=datos_oc.get('total'),
-                id_proveedor=datos_oc.get('id_proveedor')
+            # 1. Obtener el último correlativo
+           
+            last_correlative = self.db.query(OrdenesCompraModel).order_by(OrdenesCompraModel.id_orden.desc()).first()
+            if last_correlative:
+                last_number = int(last_correlative.correlative.split('-')[1])
+                new_number = last_number + 1
+            else:
+                new_number = 1
+
+            current_year = datetime.now().year
+            # 2. Generar el correlativo
+            new_correlative = f"OC-{new_number:06d}-{current_year}"
+            print(f"Este es el correlativo: {new_correlative}")
+            db_order = OrdenesCompraModel(
+                id_cotizacion=order.id_cotizacion,
+                id_proveedor=order.id_proveedor,
+                id_proveedor_contacto=order.id_proveedor_contacto,
+                moneda=order.moneda,
+                pago=order.pago,
+                entrega=order.entrega,
+                id_cotizacion_versiones=order.id_cotizacion_versiones,
+                fecha_creacion=datetime.now(),
+                correlative=new_correlative, 
+                id_usuario=order.id_usuario
             )
-            
-            self.db.add(nueva_oc)
+
+            # --- 2. Insertar la Orden Principal ---
+            self.db.add(db_order)
+            # Hacemos un "flush" para que la base de datos asigne el ID autoincremental
+            # sin hacer un commit completo de la transacción.
+            self.db.flush() 
+
+            # --- 3. Mapeo e Inserción de los Detalles ---
+            for item in order.items:
+                db_detail = OrdenesCompraDetallesModel(
+                    id_orden=db_order.id_orden, # <-- Usamos el ID recién generado
+                    id_producto=item.id_producto,
+                    cantidad=item.cantidad,
+                    precio_unitario=item.p_unitario,
+                    precio_total=item.p_total
+                )
+                self.db.add(db_detail)
+
+            # --- 4. Confirmar la Transacción ---
             self.db.commit()
-            self.db.refresh(nueva_oc)
             
-            # Generar el correlativo basado en el id_orden auto-generado
-            #year = nueva_oc.fecha_creacion.year if nueva_oc.fecha_creacion else 2025
-            numero_correlativo = f"OC-{nueva_oc.id_orden:05d}"
+            # (Opcional) Refrescar el objeto para tener todos los datos de la DB
+            #self.db.refresh(db_order) 
             
-            # Actualizar la orden con el correlativo correcto
-            nueva_oc.correlative = numero_correlativo
-            self.db.commit()
-            self.db.refresh(nueva_oc)
-            
-            return nueva_oc
-            
+            return order
+
         except Exception as e:
+            # Si algo falla, revertimos todos los cambios de esta transacción
             self.db.rollback()
-            print(f"Error al crear orden de compra: {e}")
-            return None
-    
-    def obtener_orden_por_id(self, id_orden: int) -> Optional[OrdenesCompraModel]:
-        """
-        Obtiene una orden de compra por su ID
+            print(f"Error al guardar la orden de compra: {e}")
+            raise e # Vuelve a lanzar la excepción para que el caso de uso la maneje
         
-        Args:
-            id_orden (int): ID de la orden de compra
-            
-        Returns:
-            OrdenesCompraModel: La orden de compra encontrada o None
-        """
-        return self.db.query(OrdenesCompraModel).filter(
-            OrdenesCompraModel.id_orden == id_orden
-        ).first()
-    
-    def obtener_orden_por_codigo(self, cod_oc: str) -> Optional[OrdenesCompraModel]:
-        """
-        Obtiene una orden de compra por su código
-        
-        Args:
-            cod_oc (str): Código de la orden de compra (ej: "OC-0001")
-            
-        Returns:
-            OrdenesCompraModel: La orden de compra encontrada o None
-        """
-        return self.db.query(OrdenesCompraModel).filter(
-            OrdenesCompraModel.correlative == cod_oc
-        ).first()
-    
-    def listar_ordenes_por_cotizacion(self, id_cotizacion: int) -> list[OrdenesCompraModel]:
-        """
-        Lista todas las órdenes de compra de una cotización específica
-        
-        Args:
-            id_cotizacion (int): ID de la cotización
-            
-        Returns:
-            list[OrdenesCompraModel]: Lista de órdenes de compra
-        """
-        return self.db.query(OrdenesCompraModel).filter(
-            OrdenesCompraModel.id_cotizacion == id_cotizacion,
-            OrdenesCompraModel.activo == True
-        ).all() 
-    
+
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
         
         """
-        Obtiene información de productos para generar orden de compra
+        Obtiene información de productos para generar orden de compra desde las tablas de órdenes ya guardadas
         
         Args:
             request (GenerarOCRequest): Datos de la solicitud
@@ -127,44 +98,54 @@ class OrdenesCompraRepository:
         try:
             print(f"Ejecutando consulta para cotización: {request.id_cotizacion}, versión: {request.id_version}")
             print(f"Contactos de proveedor: {request.id_contacto_proveedor}")
+
+            latest_order_id_subquery = self.db.query(
+                OrdenesCompraModel.id_orden
+            ).filter(
+                OrdenesCompraModel.id_cotizacion == request.id_cotizacion,
+                OrdenesCompraModel.id_cotizacion_versiones == request.id_version,
+                OrdenesCompraModel.id_proveedor_contacto.in_(request.id_contacto_proveedor)
+            ).order_by(
+            OrdenesCompraModel.id_orden.desc()  # Ordenamos por ID descendente para obtener el último
+            ).limit(
+            1
+            ).scalar_subquery()
             
             query = self.db.query(
-                CotizacionesVersionesModel.id_cotizacion.label('IDCOTIZACION'),
-                CotizacionesVersionesModel.id_cotizacion_versiones.label('IDVERSION'),
-                ProductosCotizacionesModel.cantidad.label('CANT'),
+                OrdenesCompraModel.correlative.label('NUMERO_OC'),
+                OrdenesCompraModel.id_cotizacion.label('IDCOTIZACION'),
+                OrdenesCompraModel.id_cotizacion_versiones.label('IDVERSION'),
+                OrdenesCompraDetallesModel.cantidad.label('CANT'),
                 UnidadMedidaModel.descripcion.label('UMED'),
                 ProductosModel.nombre.label('PRODUCTO'),
                 MarcasModel.nombre.label('MARCA'),
                 ProductosModel.modelo_marca.label('MODELO'),
-                CotizacionesVersionesModel.fecha_modificacion.label('FECHA'),
+                func.date(OrdenesCompraModel.fecha_creacion).label('FECHA'),
                 ProveedoresModel.id_proveedor.label('IDPROVEEDOR'),
                 ProveedoresModel.razon_social.label('PROVEEDOR'),
-                ProveedorContactosModel.id_proveedor_contacto.label('IDPROVEEDORCONTACTO'),
+                OrdenesCompraModel.id_proveedor_contacto.label('IDPROVEEDORCONTACTO'),
                 ProveedorContactosModel.nombre.label('PERSONAL'),
                 ProveedorContactosModel.telefono.label('TELEFONO'),
                 ProveedorContactosModel.celular.label('CELULAR'),
                 ProveedorContactosModel.correo.label('CORREO'),
                 ProveedoresModel.direccion.label('DIRECCION'),
+                OrdenesCompraModel.moneda.label('MONEDA'),
+                OrdenesCompraModel.pago.label('PAGO'),
+                OrdenesCompraDetallesModel.precio_unitario.label('PUNIT'),
                 case(
-                    (ProveedorDetalleModel.moneda == 'S/.', 'SOLES'),
-                    else_='DOLARES'
-                ).label('MONEDA'),
-                ProveedoresModel.condiciones_pago.label('PAGO'),
-                ProveedorDetalleModel.precio_costo_unitario.label('PUNIT'),
-                ProveedorDetalleModel.igv.label('IGV'),
-                (ProductosCotizacionesModel.cantidad * ProveedorDetalleModel.precio_costo_unitario).label('TOTAL')
-            ).select_from(CotizacionesVersionesModel)\
-             .join(ProductosCotizacionesModel, CotizacionesVersionesModel.id_cotizacion_versiones == ProductosCotizacionesModel.id_cotizacion_versiones)\
-             .join(ProductosModel, ProductosCotizacionesModel.id_producto == ProductosModel.id_producto)\
+                    (ProveedorDetalleModel.igv=="SIN IGV", 'SIN IGV'),
+                    else_=ProveedorDetalleModel.igv=="CON IGV"
+                ).label('IGV'),
+                OrdenesCompraDetallesModel.precio_total.label('TOTAL')
+            ).select_from(OrdenesCompraModel)\
+             .join(OrdenesCompraDetallesModel, OrdenesCompraModel.id_orden == OrdenesCompraDetallesModel.id_orden)\
+             .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)\
              .join(UnidadMedidaModel, ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida)\
              .join(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)\
-             .join(ProveedoresModel, ProductosModel.id_proveedor == ProveedoresModel.id_proveedor)\
-             .join(intermedia_proveedor_contacto, ProveedoresModel.id_proveedor == intermedia_proveedor_contacto.c.id_proveedor)\
-             .join(ProveedorContactosModel, intermedia_proveedor_contacto.c.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)\
+             .join(ProveedoresModel, OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor)\
              .join(ProveedorDetalleModel, ProductosModel.id_producto == ProveedorDetalleModel.id_producto)\
-             .filter(CotizacionesVersionesModel.id_cotizacion == request.id_cotizacion)\
-             .filter(ProductosCotizacionesModel.id_cotizacion_versiones == request.id_version)\
-             .filter(ProveedorContactosModel.id_proveedor_contacto.in_(request.id_contacto_proveedor))
+             .join(ProveedorContactosModel, OrdenesCompraModel.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)\
+             .filter(OrdenesCompraModel.id_orden == latest_order_id_subquery)
             
             resultados = query.all()
             print(f"Consulta ejecutada. Resultados obtenidos: {len(resultados)}")
@@ -178,6 +159,70 @@ class OrdenesCompraRepository:
             print(f"Error en obtener_info_oc: {e}")
             import traceback
             traceback.print_exc()
+            return []
+
+    def actualizar_ruta_s3(self, id_orden: int, ruta_s3: str) -> bool:
+        """
+        Actualiza la ruta S3 de una orden de compra específica
+        
+        Args:
+            id_orden (int): ID de la orden de compra
+            ruta_s3 (str): URL del archivo en S3
+            
+        Returns:
+            bool: True si se actualizó correctamente, False en caso contrario
+        """
+        try:
+            orden = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == id_orden 
+            ).first()
+            print(f"Este es el orden: {orden}")
+            
+            if orden:
+                orden.ruta_s3 = ruta_s3
+                self.db.commit()
+                print(f"URL S3 actualizada para orden {id_orden}: {ruta_s3}")
+                return True
+            else:
+                print(f"No se encontró orden con ID {id_orden}")
+                return False
+                
+        except Exception as e:
+            print(f"Error al actualizar ruta S3: {e}")
+            self.db.rollback()
+            return False
+
+    def obtener_ordenes_por_contacto_y_version(self, id_cotizacion: int, id_version: int, id_contacto: int) -> List[OrdenesCompraModel]:
+        """
+        Obtiene las órdenes de compra de un contacto específico en una versión de cotización
+        
+        Args:
+            id_cotizacion (int): ID de la cotización
+            id_version (int): ID de la versión
+            id_contacto (int): ID del contacto del proveedor
+            
+        Returns:
+            List[OrdenesCompraModel]: Lista de órdenes encontradas
+
+        """
+ 
+        try:
+            query = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_cotizacion == id_cotizacion,
+                OrdenesCompraModel.id_cotizacion_versiones == id_version,
+                OrdenesCompraModel.id_proveedor_contacto == id_contacto
+            )
+
+            query = query.order_by(OrdenesCompraModel.id_orden.desc())
+            latest_order = query.first()
+
+            if latest_order:
+                return [latest_order]
+            else:
+                return []
+            
+        except Exception as e:
+            print(f"Error al obtener órdenes por contacto: {e}")
             return []
  
  

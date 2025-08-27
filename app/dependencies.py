@@ -13,7 +13,7 @@ from app.core.use_cases.upload_invoice_use_case import UploadInvoiceUseCase
 from app.core.use_cases.proveedores.get_provider_contacts_use_case import GetProviderContactsUseCase
 from app.adapters.outbound.database.repositories.proveedores_repository import ProveedoresRepository
 from app.core.use_cases.generar_oc.generar_orden_compra import GenerarOrdenCompra
-from app.adapters.outbound.database.repositories.ordenes_compra_repository1 import OrdenesCompraRepository
+from app.adapters.outbound.database.repositories.ordenes_compra_repository import OrdenesCompraRepository
 from app.adapters.outbound.database.repositories.cotizacion_version_repository import CotizacionVersionesRepository
 from app.adapters.outbound.excel.openpyxl_excel_generator import OpenPyXLExcelGenerator
 from app.core.use_cases.integracion_sunat.integracion_sunat_uc import IntegracionSunatUC
