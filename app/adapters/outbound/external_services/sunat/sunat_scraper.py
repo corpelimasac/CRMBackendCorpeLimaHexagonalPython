@@ -69,14 +69,35 @@ class WebDriverManager:
         """Crea una nueva instancia de WebDriver"""
         options = self._get_chrome_options()
         
-        # Usar ChromeDriver del sistema para mayor velocidad
-        try:
-            service = ChromeService(executable_path="/usr/bin/chromedriver")
-            driver = webdriver.Chrome(service=service, options=options)
-        except:
-            # Fallback a WebDriverManager si no está disponible
-            service = ChromeService(executable_path=ChromeDriverManager().install())
-            driver = webdriver.Chrome(service=service, options=options)
+        # Intentar múltiples rutas de ChromeDriver para Railway
+        chromedriver_paths = [
+            "/usr/bin/chromedriver",  # Ruta del Dockerfile
+            "/usr/local/bin/chromedriver",  # Ruta alternativa
+            "/snap/bin/chromedriver",  # Ruta snap
+        ]
+        
+        driver = None
+        for path in chromedriver_paths:
+            try:
+                print(f"🔍 Intentando ChromeDriver en: {path}")
+                service = ChromeService(executable_path=path)
+                driver = webdriver.Chrome(service=service, options=options)
+                print(f"✅ ChromeDriver exitoso en: {path}")
+                break
+            except Exception as e:
+                print(f"❌ ChromeDriver falló en {path}: {e}")
+                continue
+        
+        # Si no se pudo crear con rutas del sistema, usar WebDriverManager como último recurso
+        if driver is None:
+            try:
+                print("🔄 Intentando con WebDriverManager...")
+                service = ChromeService(executable_path=ChromeDriverManager().install())
+                driver = webdriver.Chrome(service=service, options=options)
+                print("✅ ChromeDriver exitoso con WebDriverManager")
+            except Exception as e:
+                print(f"💥 Error fatal con WebDriverManager: {e}")
+                raise Exception(f"No se pudo inicializar ChromeDriver: {e}")
         
         # Timeouts ULTRA RÁPIDOS para Railway
         driver.set_page_load_timeout(8)
@@ -118,6 +139,17 @@ class WebDriverManager:
         options.add_argument("--log-level=3")
         options.add_argument("--silent")
         options.add_argument("--disable-blink-features=AutomationControlled")
+        
+        # Opciones adicionales para Railway
+        options.add_argument("--remote-debugging-port=9222")
+        options.add_argument("--disable-setuid-sandbox")
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument("--disable-hang-monitor")
+        options.add_argument("--disable-prompt-on-repost")
+        options.add_argument("--disable-domain-reliability")
+        options.add_argument("--disable-component-extensions-with-background-pages")
+        options.add_argument("--metrics-recording-only")
+        options.add_argument("--no-report-upload")
         
         # Optimizaciones de memoria y red
         options.add_argument("--memory-pressure-off")
@@ -175,6 +207,53 @@ class WebDriverManager:
         elapsed = datetime.now() - self._created_at
         remaining = timedelta(hours=self._max_lifetime_hours) - elapsed
         return f"Activo (restan {remaining})"
+    
+    def test_chromedriver(self):
+        """Prueba si ChromeDriver está funcionando correctamente"""
+        try:
+            options = self._get_chrome_options()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            
+            # Probar rutas del sistema primero
+            chromedriver_paths = [
+                "/usr/bin/chromedriver",
+                "/usr/local/bin/chromedriver",
+                "/snap/bin/chromedriver",
+            ]
+            
+            for path in chromedriver_paths:
+                try:
+                    print(f"🧪 Probando ChromeDriver en: {path}")
+                    service = ChromeService(executable_path=path)
+                    test_driver = webdriver.Chrome(service=service, options=options)
+                    test_driver.get("https://www.google.com")
+                    title = test_driver.title
+                    test_driver.quit()
+                    print(f"✅ ChromeDriver funciona en {path}: {title}")
+                    return True, path
+                except Exception as e:
+                    print(f"❌ ChromeDriver falló en {path}: {e}")
+                    continue
+            
+            # Probar WebDriverManager como último recurso
+            try:
+                print("🔄 Probando WebDriverManager...")
+                service = ChromeService(executable_path=ChromeDriverManager().install())
+                test_driver = webdriver.Chrome(service=service, options=options)
+                test_driver.get("https://www.google.com")
+                title = test_driver.title
+                test_driver.quit()
+                print(f"✅ WebDriverManager funciona: {title}")
+                return True, "WebDriverManager"
+            except Exception as e:
+                print(f"❌ WebDriverManager falló: {e}")
+                return False, str(e)
+                
+        except Exception as e:
+            print(f"💥 Error en test_chromedriver: {e}")
+            return False, str(e)
 
 class SunatScraper:
     """
@@ -192,6 +271,10 @@ class SunatScraper:
     def get_driver_status(self):
         """Obtiene el estado del WebDriver"""
         return self.driver_manager.get_status()
+    
+    def test_chromedriver(self):
+        """Prueba si ChromeDriver está funcionando correctamente"""
+        return self.driver_manager.test_chromedriver()
     
     def consultar_ruc(self, ruc_numero: str, modo_rapido: bool = True) -> Dict:
         """
