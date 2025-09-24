@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pip install:*)",
+      "Bash(alembic upgrade:*)",
+      "Bash(python:*)",
+      "Bash(PYTHONPATH=. python app/main.py)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

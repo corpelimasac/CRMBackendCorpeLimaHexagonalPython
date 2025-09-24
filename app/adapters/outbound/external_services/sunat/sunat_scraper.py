@@ -99,9 +99,9 @@ class WebDriverManager:
                 print(f"💥 Error fatal con WebDriverManager: {e}")
                 raise Exception(f"No se pudo inicializar ChromeDriver: {e}")
         
-        # Timeouts ULTRA RÁPIDOS para Railway
-        driver.set_page_load_timeout(8)
-        driver.implicitly_wait(2)
+        # Timeouts más estables para evitar errores
+        driver.set_page_load_timeout(20)
+        driver.implicitly_wait(5)
         
         return driver
     
@@ -296,18 +296,21 @@ class SunatScraper:
             print(f"Consultando RUC {ruc_numero}...")
             driver.get(self.url)
 
-            # Timeouts ULTRA RÁPIDOS
-            ruc_input = WebDriverWait(driver, 3).until(
+            # Timeouts más estables
+            ruc_input = WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.ID, "txtRuc"))
             )
 
+            ruc_input.clear()
             ruc_input.send_keys(ruc_numero)
 
-            btn_consultar = driver.find_element(By.ID, "btnAceptar")
+            btn_consultar = WebDriverWait(driver, 8).until(
+                EC.element_to_be_clickable((By.ID, "btnAceptar"))
+            )
             btn_consultar.click()
 
-            # Esperar resultados con timeout reducido
-            WebDriverWait(driver, 5).until(
+            # Esperar resultados con timeout más generoso
+            WebDriverWait(driver, 15).until(
                 EC.presence_of_element_located((By.CLASS_NAME, "list-group"))
             )
 
@@ -518,14 +521,14 @@ class SunatScraper:
         try:
             # Usar lock para evitar conflictos en navegación paralela
             with threading.Lock():
-                # Timeout ULTRA RÁPIDO
-                btn_consultar = WebDriverWait(driver, 2).until(
+                # Timeout más estable
+                btn_consultar = WebDriverWait(driver, 8).until(
                     EC.element_to_be_clickable((By.CLASS_NAME, "btnInfNumTra"))
                 )
                 btn_consultar.click()
 
-                # Esperar tabla con timeout mínimo
-                WebDriverWait(driver, 3).until(
+                # Esperar tabla con timeout razonable
+                WebDriverWait(driver, 10).until(
                     EC.presence_of_element_located((By.NAME, "formEnviar"))
                 )
 
@@ -616,14 +619,14 @@ class SunatScraper:
     def _extraer_representante_legal_sincrono(self, driver) -> Dict:
         """Extrae información del representante legal - VERSIÓN SÍNCRONA"""
         try:
-            # Hacer clic en representantes legales con timeout corto
-            btn_representates_legales = WebDriverWait(driver, 3).until(
+            # Hacer clic en representantes legales con timeout estable
+            btn_representates_legales = WebDriverWait(driver, 8).until(
                 EC.element_to_be_clickable((By.CLASS_NAME, "btnInfRepLeg"))
             )
             btn_representates_legales.click()
 
-            # Esperar tabla con timeout muy corto
-            WebDriverWait(driver, 4).until(
+            # Esperar tabla con timeout razonable
+            WebDriverWait(driver, 10).until(
                 EC.presence_of_element_located((By.XPATH, "//table[@class='table']//tbody/tr"))
             )
 
