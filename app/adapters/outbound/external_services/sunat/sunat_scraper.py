@@ -447,13 +447,6 @@ class SunatScraper:
             except:
                 datos["tipo_contribuyente"] = "Sin datos"
 
-            try:
-                # Extraer Condicion del contribuyente
-                elemento_p_condicion_contribuyente = driver.find_element(By.XPATH, "//h4[contains(text(), 'Condicion del Contribuyente:')]/parent::div/following-sibling::div/p")
-                datos["condicion_contribuyente"] = elemento_p_condicion_contribuyente.text.strip()
-            except:
-                datos["condicion_contribuyente"] = "Sin datos"
-
 
             # Extraer Domicilio Fiscal (rápido)
             datos.update(self._extraer_domicilio_fiscal_rapido(driver))
