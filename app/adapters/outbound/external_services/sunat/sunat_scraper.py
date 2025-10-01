@@ -368,6 +368,7 @@ class SunatScraper:
                 "numeroDocumento": ruc_numero,
                 "razonSocial": datos_basicos.get("razon_social", "Sin datos"),
                 "nombreComercial": datos_basicos.get("nombre_comercial", "-"),
+                "activo": datos_basicos.get("estado_contribuyente", False),
                 "direccion": datos_basicos.get("direccion", "Sin datos"),
                 "distrito": datos_basicos.get("distrito", "Sin datos"),
                 "provincia": datos_basicos.get("provincia", "Sin datos"),
@@ -414,6 +415,17 @@ class SunatScraper:
                 datos["nombre_comercial"] = "-"
 
             try:
+                # Extraer Estado del contribuyente
+                elemento_p_estado_contribuyente = driver.find_element(By.XPATH, "//h4[contains(text(), 'Estado del Contribuyente:')]/parent::div/following-sibling::div/p")
+                datos["estado_contribuyente"] = elemento_p_estado_contribuyente.text.strip()
+                if(datos["estado_contribuyente"] == "ACTIVO"):
+                    datos["estado_contribuyente"] = True
+                else:
+                    datos["estado_contribuyente"] = False
+            except:
+                datos["estado_contribuyente"] = False
+
+            try:
                 # Extraer Fecha de Inicio de Actividades
                 elemento_p_fecha_inicio = driver.find_element(By.XPATH, "//h4[contains(text(), 'Fecha de Inicio de Actividades:')]/parent::div/following-sibling::div/p")
                 datos["fecha_inicio_actividades"] = elemento_p_fecha_inicio.text.strip()
@@ -442,6 +454,7 @@ class SunatScraper:
             return {
                 "razon_social": "Sin datos",
                 "nombre_comercial": "-",
+                "estado_contribuyente": False,
                 "fecha_inicio_actividades": "Sin datos",
                 "tipo_contribuyente": "Sin datos",
                 "direccion": "Sin datos",
@@ -792,6 +805,7 @@ class SunatScraper:
             "numeroDocumento": ruc_numero,
             "razonSocial": "Error en consulta",
             "nombreComercial": "Sin datos",
+            "activo": False,
             "direccion": "Sin datos",
             "distrito": "Sin datos",
             "provincia": "Sin datos",

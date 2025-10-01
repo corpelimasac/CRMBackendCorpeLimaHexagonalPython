@@ -28,6 +28,7 @@ class SunatRucResponse(BaseModel):
     provincia: str = Field(..., description="Provincia del domicilio fiscal")
     departamento: str = Field(..., description="Departamento del domicilio fiscal")
     fechaInicioActividades: str = Field(..., description="Fecha de inicio de actividades")
+    activo: bool = Field(..., description="Si el contribuyente está activo")
     EsAgenteRetencion: bool = Field(..., description="Si es agente de retención")
     actividadEconomica: str = Field(..., description="Actividad económica principal")
     tipoContribuyente: str = Field(..., description="Tipo de contribuyente")
@@ -47,6 +48,7 @@ class SunatRucResponse(BaseModel):
                 "provincia": "LIMA",
                 "departamento": "LIMA",
                 "fechaInicioActividades": "17/08/2004",
+                "activo": True,
                 "EsAgenteRetencion": True,
                 "actividadEconomica": "VENTA AL POR MAYOR NO ESPECIALIZADA",
                 "tipoContribuyente": "EMPRESA INDIVIDUAL DE RESP. LTDA",
