@@ -369,6 +369,7 @@ class SunatScraper:
                 "razonSocial": datos_basicos.get("razon_social", "Sin datos"),
                 "nombreComercial": datos_basicos.get("nombre_comercial", "-"),
                 "activo": datos_basicos.get("estado_contribuyente", False),
+                "condicion_contribuyente": datos_basicos.get("condicion_contribuyente", "Sin datos"),
                 "direccion": datos_basicos.get("direccion", "Sin datos"),
                 "distrito": datos_basicos.get("distrito", "Sin datos"),
                 "provincia": datos_basicos.get("provincia", "Sin datos"),
@@ -426,6 +427,13 @@ class SunatScraper:
                 datos["estado_contribuyente"] = False
 
             try:
+                # Extraer Condición del contribuyente
+                elemento_p_condicion_contribuyente = driver.find_element(By.XPATH, "//h4[contains(text(), 'Condición del Contribuyente:')]/parent::div/following-sibling::div/p")
+                datos["condicion_contribuyente"] = elemento_p_condicion_contribuyente.text.strip()
+            except:
+                datos["condicion_contribuyente"] = "Sin datos"
+
+            try:
                 # Extraer Fecha de Inicio de Actividades
                 elemento_p_fecha_inicio = driver.find_element(By.XPATH, "//h4[contains(text(), 'Fecha de Inicio de Actividades:')]/parent::div/following-sibling::div/p")
                 datos["fecha_inicio_actividades"] = elemento_p_fecha_inicio.text.strip()
@@ -438,6 +446,14 @@ class SunatScraper:
                 datos["tipo_contribuyente"] = elemento_p_tipo_contribuyente.text.strip()
             except:
                 datos["tipo_contribuyente"] = "Sin datos"
+
+            try:
+                # Extraer Condicion del contribuyente
+                elemento_p_condicion_contribuyente = driver.find_element(By.XPATH, "//h4[contains(text(), 'Condicion del Contribuyente:')]/parent::div/following-sibling::div/p")
+                datos["condicion_contribuyente"] = elemento_p_condicion_contribuyente.text.strip()
+            except:
+                datos["condicion_contribuyente"] = "Sin datos"
+
 
             # Extraer Domicilio Fiscal (rápido)
             datos.update(self._extraer_domicilio_fiscal_rapido(driver))
@@ -462,7 +478,9 @@ class SunatScraper:
                 "provincia": "Sin datos",
                 "distrito": "Sin datos",
                 "actividad_economica": "Sin datos",
-                "es_agente_retencion": False
+                "es_agente_retencion": False,
+                "condicion_contribuyente": "Sin datos"
+
             }
 
     def _extraer_domicilio_fiscal_rapido(self, driver) -> Dict:
