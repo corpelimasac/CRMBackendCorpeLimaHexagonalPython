@@ -27,6 +27,7 @@ class SunatRucResponse(BaseModel):
     distrito: str = Field(..., description="Distrito del domicilio fiscal")
     provincia: str = Field(..., description="Provincia del domicilio fiscal")
     departamento: str = Field(..., description="Departamento del domicilio fiscal")
+    ubigeo:str= Field(...,description="Ubigeo")
     fechaInicioActividades: str = Field(..., description="Fecha de inicio de actividades")
     activo: bool = Field(..., description="Si el contribuyente está activo")
     EsAgenteRetencion: bool = Field(..., description="Si es agente de retención")

@@ -4,7 +4,9 @@
       "Bash(pip install:*)",
       "Bash(alembic upgrade:*)",
       "Bash(python:*)",
-      "Bash(PYTHONPATH=. python app/main.py)"
+      "Bash(PYTHONPATH=. python app/main.py)",
+      "Bash(dir)",
+      "Bash(dir:*)"
     ],
     "deny": [],
     "ask": []

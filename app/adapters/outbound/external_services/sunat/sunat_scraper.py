@@ -16,8 +16,18 @@ import threading
 from queue import Queue
 from datetime import datetime, timedelta
 import atexit
+import pandas as pd
+import pickle
+import os
+import threading
+from typing import Dict, Optional, Any # Nuevo import para tipos
 # Agrega esta línea al inicio de tu archivo, después de los imports
 logging.getLogger('webdriver_manager').setLevel(logging.ERROR)
+
+# Obtener el directorio donde está ubicado este archivo
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+NOMBRE_CSV = os.path.join(SCRIPT_DIR, 'ubigeo_distritos.csv')
+NOMBRE_PICKLE = os.path.join(SCRIPT_DIR, 'ubigeo_map.pkl') 
 
 class WebDriverManager:
     """
@@ -255,6 +265,102 @@ class WebDriverManager:
             print(f"💥 Error en test_chromedriver: {e}")
             return False, str(e)
 
+
+class UbigeoMap:
+    """
+    Clase Singleton para cargar y mantener el mapa de Distrito -> Ubigeo
+    de forma persistente (usando pickle) en memoria.
+    """
+    _instance = None
+    _lock = threading.Lock()
+    _ubigeo_map: Optional[Dict[str, Any]] = None
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(UbigeoMap, cls).__new__(cls)
+                    cls._instance._load_map() # Cargar el mapa al crear la instancia
+        return cls._instance
+
+    def _load_map(self):
+        """
+        Intenta cargar el mapa desde el archivo pickle. Si falla, lo regenera desde CSV.
+        Esta función solo se llama UNA VEZ al inicio.
+        """
+        # 1. Intentar cargar desde Pickle
+        if os.path.exists(NOMBRE_PICKLE):
+            try:
+                with open(NOMBRE_PICKLE, 'rb') as f:
+                    self._ubigeo_map = pickle.load(f)
+                print(f"[OK] UbigeoMap cargado desde {NOMBRE_PICKLE} (Persistencia). Total: {len(self._ubigeo_map)} distritos.")
+                return
+            except Exception as e:
+                print(f"[ERROR] Error al cargar {NOMBRE_PICKLE}: {e}. Regenerando desde CSV.")
+
+        # 2. Si el pickle falla, regenerar desde CSV
+        print(f"[INFO] Generando UbigeoMap desde {NOMBRE_CSV} (Lento).")
+        try:
+            # Verificar que el archivo existe
+            if not os.path.exists(NOMBRE_CSV):
+                raise FileNotFoundError(f"No se encontró el archivo: {NOMBRE_CSV}")
+
+            print(f"[INFO] Archivo CSV encontrado en: {NOMBRE_CSV}")
+
+            # Usar encoding='utf-8-sig' para manejar el BOM automáticamente
+            # El separador es coma, no punto y coma
+            df = pd.read_csv(NOMBRE_CSV, sep=',', encoding='utf-8-sig')
+            print(f"[INFO] CSV cargado. Filas: {len(df)}, Columnas: {list(df.columns)}")
+
+            # Limpiar el dataframe
+            df = df.dropna(subset=['Distrito', 'Ubigeo']).drop_duplicates(subset=['Distrito'])
+            print(f"[INFO] Después de limpieza. Filas: {len(df)}")
+
+            # La clave es convertir a MAYÚSCULAS para que la búsqueda sea robusta
+            diccionario_ubigeo = df.set_index(
+                df['Distrito'].str.strip().str.upper()
+            ).to_dict()['Ubigeo']
+
+            self._ubigeo_map = diccionario_ubigeo
+            print(f"[INFO] Diccionario creado con {len(self._ubigeo_map)} distritos")
+
+            # Guardar el diccionario como pickle para el futuro
+            with open(NOMBRE_PICKLE, 'wb') as f:
+                pickle.dump(diccionario_ubigeo, f)
+            print(f"[OK] UbigeoMap generado y guardado en {NOMBRE_PICKLE} para persistencia.")
+
+        except FileNotFoundError as e:
+            print(f"[ERROR] El archivo CSV '{NOMBRE_CSV}' no fue encontrado.")
+            print(f"[ERROR] Ruta completa: {os.path.abspath(NOMBRE_CSV)}")
+            print(f"[ERROR] Directorio actual: {os.getcwd()}")
+            print(f"[ERROR] Error: {e}")
+            self._ubigeo_map = {} # Devolver un diccionario vacío para evitar fallos
+        except Exception as e:
+            print(f"[ERROR] Fallo la generacion del UbigeoMap desde CSV: {e}")
+            import traceback
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
+            self._ubigeo_map = {}
+            
+
+    def obtener_ubigeo(self, distrito: str) -> str:
+        """
+        Busca el Ubigeo. Retorna el código o "Sin ubigeo" si no lo encuentra.
+        """
+        if not self._ubigeo_map:
+            return "Sin ubigeo (Error de carga)"
+            
+        # Limpiar el input para que coincida con la clave del diccionario (MAYÚSCULAS)
+        distrito_limpio = distrito.strip().upper() 
+        
+        # Búsqueda instantánea O(1)
+        ubigeo = self._ubigeo_map.get(distrito_limpio)
+        
+        return str(ubigeo).strip() if ubigeo else "Sin ubigeo"
+
+    def get_archivo_pickle(self):
+        # Implementación mínima para satisfacer tu esqueleto original
+        return NOMBRE_PICKLE
+
 class SunatScraper:
     """
     Servicio para realizar web scraping en la página de SUNAT usando WebDriverManager singleton
@@ -263,6 +369,7 @@ class SunatScraper:
     def __init__(self):
         self.url = "https://e-consultaruc.sunat.gob.pe/cl-ti-itmrconsruc/FrameCriterioBusquedaWeb.jsp"
         self.driver_manager = WebDriverManager()
+        self.ubigeo_map = UbigeoMap() 
     
     def get_driver(self):
         """Obtiene el WebDriver del manager singleton"""
@@ -334,34 +441,22 @@ class SunatScraper:
                 "fechaDesde": "Sin datos"
             }
             
-            # Extraer información adicional según el modo
-            if modo_rapido:
-                # Extraer trabajadores en paralelo (solo trabajadores)
-                try:
-                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores_rapido(driver)
-                    print("✅ Trabajadores extraídos")
-                except Exception as e:
-                    print(f"❌ Error en trabajadores: {e}")
+            # Extraer trabajadores en paralelo (solo trabajadores)
+            try:
+                cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores_rapido(driver)
+                print("✅ Trabajadores extraídos")
+            except Exception as e:
+                 print(f"❌ Error en trabajadores: {e}")
                 
                 # Extraer representante legal de forma síncrona
-                try:
-                    representante_legal = self._extraer_representante_legal_sincrono(driver)
-                    print("✅ Representante legal extraído")
-                except Exception as e:
-                    print(f"❌ Error en representante: {e}")
-            else:
-                # Modo completo: usar métodos originales
-                try:
-                    print("Extrayendo cantidad de trabajadores (modo completo)...")
-                    cantidad_trabajadores, cantidad_prestadores = self._extraer_cantidad_trabajadores(driver)
-                except Exception as e:
-                    print(f"Error al extraer trabajadores: {e}")
-                
-                try:
-                    print("Extrayendo representante legal (modo completo)...")
-                    representante_legal = self._extraer_representante_legal(driver)
-                except Exception as e:
-                    print(f"Error al extraer representante legal: {e}")
+            try:
+                representante_legal = self._extraer_representante_legal_sincrono(driver)
+                print("✅ Representante legal extraído")
+            except Exception as e:
+                print(f"❌ Error en representante: {e}")
+           
+            distrito_obtenido = datos_basicos.get("distrito", "Sin datos")
+            ubigeo = self.ubigeo_map.obtener_ubigeo(distrito_obtenido)
 
             # Crear el diccionario de respuesta
             resultado = {
@@ -373,6 +468,7 @@ class SunatScraper:
                 "direccion": datos_basicos.get("direccion", "Sin datos"),
                 "distrito": datos_basicos.get("distrito", "Sin datos"),
                 "provincia": datos_basicos.get("provincia", "Sin datos"),
+                "ubigeo":ubigeo,
                 "departamento": datos_basicos.get("departamento", "Sin datos"),
                 "fechaInicioActividades": datos_basicos.get("fecha_inicio_actividades", "Sin datos"),
                 "EsAgenteRetencion": datos_basicos.get("es_agente_retencion", False),
@@ -507,6 +603,8 @@ class SunatScraper:
                 direccion = texto_completo_domicilio_fiscal.strip()
                 departamento = provincia = distrito = "No especificado"
 
+
+
             return {
                 "direccion": direccion,
                 "departamento": departamento,
@@ -590,56 +688,7 @@ class SunatScraper:
             print(f"Error en _extraer_cantidad_trabajadores_rapido: {e}")
             return "Sin datos", "Sin datos"
 
-    def _extraer_cantidad_trabajadores(self, driver) -> tuple:
-        """Extrae la cantidad de trabajadores y prestadores de servicio"""
-        try:
-            # Hacer clic en el botón de Cantidad de Trabajadores
-            
-            btn_consultar = WebDriverWait(driver, 8).until(
-                EC.element_to_be_clickable((By.CLASS_NAME, "btnInfNumTra"))
-            )
-            btn_consultar.click()
-
-            # Esperar a que la tabla aparezca
-            WebDriverWait(driver, 15).until(
-                EC.presence_of_element_located((By.NAME, "formEnviar"))
-            )
-
-            cantidad_trabajadores = "Sin datos"
-            cantidad_prestadores_servicio = "Sin datos"
-            
-            # Verificar si existe al menos una fila en la tabla
-            xpath_verificar_filas = "//table[@class='table']//tbody/tr"
-            filas = driver.find_elements(By.XPATH, xpath_verificar_filas)
-            
-            if len(filas) > 0:
-                # Obtener la última fila directamente
-                try:
-                    ultima_fila = filas[-1]  # Obtener la última fila directamente
-                    celdas = ultima_fila.find_elements(By.TAG_NAME, "td")
-                    
-                    if len(celdas) >= 4:
-                        cantidad_trabajadores = celdas[1].text.strip()
-                        cantidad_prestadores_servicio = celdas[3].text.strip()
-                except Exception as e:
-                    print(f"Error al leer celdas de la tabla: {e}")
-
-            # Volver a la página principal más rápido
-            try:
-                btn_volver = WebDriverWait(driver, 8).until(
-                    EC.element_to_be_clickable((By.CLASS_NAME, "btnNuevaConsulta"))
-                )
-                btn_volver.click()
-                time.sleep(1)  # Reducir tiempo de espera
-            except Exception as e:
-                print(f"Error al volver a la página principal: {e}")
-
-            return cantidad_trabajadores, cantidad_prestadores_servicio
-            
-        except Exception as e:
-            print(f"Error al extraer cantidad de trabajadores: {e}")
-            return "Sin datos", "Sin datos"
-
+   
     def _extraer_representante_legal_sincrono(self, driver) -> Dict:
         """Extrae información del representante legal - VERSIÓN SÍNCRONA"""
         try:
@@ -707,109 +756,7 @@ class SunatScraper:
                 "fechaDesde": "Sin datos"
             }
 
-    def _extraer_representante_legal_rapido(self, driver) -> Dict:
-        """Extrae información del representante legal - VERSIÓN ULTRA RÁPIDA CON PARALELISMO"""
-        try:
-            # Usar lock para evitar conflictos en navegación paralela
-            with threading.Lock():
-                # Timeout ULTRA RÁPIDO
-                btn_representates_legales = WebDriverWait(driver, 2).until(
-                    EC.element_to_be_clickable((By.CLASS_NAME, "btnInfRepLeg"))
-                )
-                btn_representates_legales.click()
-
-                # Esperar tabla con timeout mínimo
-                WebDriverWait(driver, 3).until(
-                    EC.presence_of_element_located((By.XPATH, "//table[@class='table']//tbody/tr"))
-                )
-
-                # Valores por defecto
-                documento_representante = "Sin datos"
-                nro_documento_representante = "Sin datos"
-                nombre_representante = "Sin datos"
-                cargo_representante = "Sin datos"
-                fecha_representante = "Sin datos"
-                
-                try:
-                    # Obtener filas con manejo de elementos obsoletos
-                    filas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
-                    
-                    # Buscar GERENTE GENERAL específicamente
-                    fila_seleccionada = None
-                    for i, fila in enumerate(filas):
-                        try:
-                            celdas = fila.find_elements(By.TAG_NAME, "td")
-                            if len(celdas) >= 4:
-                                cargo_texto = celdas[3].text.strip().upper()
-                                if "GERENTE GENERAL" in cargo_texto:
-                                    fila_seleccionada = i
-                                    break
-                        except:
-                            continue  # Ignorar elementos obsoletos
-                    
-                    # Si no encuentra GERENTE GENERAL, buscar cualquier GERENTE
-                    if fila_seleccionada is None:
-                        for i, fila in enumerate(filas):
-                            try:
-                                celdas = fila.find_elements(By.TAG_NAME, "td")
-                                if len(celdas) >= 4:
-                                    cargo_texto = celdas[3].text.strip().upper()
-                                    if "GERENTE" in cargo_texto:
-                                        fila_seleccionada = i
-                                        break
-                            except:
-                                continue  # Ignorar elementos obsoletos
-                    
-                    # Si no encuentra gerente, usar primera fila
-                    if fila_seleccionada is None and len(filas) > 0:
-                        fila_seleccionada = 0
-                    
-                    # Extraer datos de la fila seleccionada
-                    if fila_seleccionada is not None and fila_seleccionada < len(filas):
-                        try:
-                            # Obtener la fila nuevamente para evitar elementos obsoletos
-                            filas_actualizadas = driver.find_elements(By.XPATH, "//table[@class='table']//tbody/tr")
-                            if fila_seleccionada < len(filas_actualizadas):
-                                fila_actual = filas_actualizadas[fila_seleccionada]
-                                celdas = fila_actual.find_elements(By.TAG_NAME, "td")
-                                if len(celdas) >= 5:
-                                    documento_representante = celdas[0].text.strip()
-                                    nro_documento_representante = celdas[1].text.strip()
-                                    nombre_representante = celdas[2].text.strip()
-                                    cargo_representante = celdas[3].text.strip()
-                                    fecha_representante = celdas[4].text.strip()
-                        except:
-                            pass  # Ignorar errores de lectura
-                            
-                except Exception as e:
-                    print(f"Error al procesar filas de representantes: {e}")
-
-                # Volver inmediatamente sin esperas
-                try:
-                    btn_volver = driver.find_element(By.CLASS_NAME, "btnNuevaConsulta")
-                    btn_volver.click()
-                except:
-                    pass  # Ignorar errores de navegación
-
-                return {
-                    "tipoDocumento": documento_representante,
-                    "nroDocumento": nro_documento_representante,
-                    "nombre": nombre_representante,
-                    "cargo": cargo_representante,
-                    "fechaDesde": fecha_representante
-                }
-
-        except Exception as e:
-            print(f"Error en _extraer_representante_legal_rapido: {e}")
-            return {
-                "tipoDocumento": "Sin datos",
-                "nroDocumento": "Sin datos",
-                "nombre": "Sin datos",
-                "cargo": "Sin datos",
-                "fechaDesde": "Sin datos"
-            }
-
-
+  
     def _crear_respuesta_error(self, ruc_numero: str, error_msg: str) -> Dict:
         """Crea una respuesta de error estandarizada"""
         return {
@@ -836,3 +783,7 @@ class SunatScraper:
             },
             "error": error_msg
         }
+
+
+
+

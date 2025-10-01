@@ -42,4 +42,5 @@ webdriver-manager
 selenium
 requests
 
+pandas
 
