@@ -44,3 +44,4 @@ requests
 
 pandas
 
+redis==5.0.1
