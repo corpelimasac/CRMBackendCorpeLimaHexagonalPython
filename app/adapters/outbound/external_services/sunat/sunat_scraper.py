@@ -116,14 +116,14 @@ class WebDriverManager:
         return driver
     
     def _get_chrome_options(self) -> ChromeOptions:
-        """Configura las opciones de Chrome para máxima velocidad en Railway"""
+        """Configura las opciones de Chrome/Chromium para máxima velocidad (Alpine + Docker)"""
         options = ChromeOptions()
-        
+
         # User-Agent optimizado para Linux
         user_agent = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
         options.add_argument(f'user-agent={user_agent}')
-        
-        # Configuración ULTRA RÁPIDA para Railway
+
+        # Configuración ULTRA RÁPIDA para Alpine Linux + Docker
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
@@ -140,7 +140,6 @@ class WebDriverManager:
         options.add_argument("--disable-extensions")
         options.add_argument("--disable-plugins")
         options.add_argument("--disable-images")
-        options.add_argument("--disable-css")
         options.add_argument("--disable-web-security")
         options.add_argument("--disable-features=VizDisplayCompositor,TranslateUI")
         options.add_argument("--disable-client-side-phishing-detection")
@@ -149,8 +148,8 @@ class WebDriverManager:
         options.add_argument("--log-level=3")
         options.add_argument("--silent")
         options.add_argument("--disable-blink-features=AutomationControlled")
-        
-        # Opciones adicionales para Railway
+
+        # Opciones específicas para Alpine/Docker
         options.add_argument("--remote-debugging-port=9222")
         options.add_argument("--disable-setuid-sandbox")
         options.add_argument("--disable-ipc-flooding-protection")
@@ -160,13 +159,15 @@ class WebDriverManager:
         options.add_argument("--disable-component-extensions-with-background-pages")
         options.add_argument("--metrics-recording-only")
         options.add_argument("--no-report-upload")
-        
+        options.add_argument("--single-process")  # Crítico para Alpine Linux
+        options.add_argument("--disable-crash-reporter")
+
         # Optimizaciones de memoria y red
         options.add_argument("--memory-pressure-off")
         options.add_argument("--aggressive-cache-discard")
         options.add_argument("--window-size=800,600")
         options.add_argument("--page-load-strategy=eager")
-        
+
         # Configurar prefs para velocidad máxima
         prefs = {
             "profile.managed_default_content_settings.images": 2,
@@ -183,11 +184,14 @@ class WebDriverManager:
             "profile.managed_default_content_settings.media_stream": 2,
         }
         options.add_experimental_option("prefs", prefs)
-        
+
         # Anti-detección
         options.add_experimental_option("excludeSwitches", ["enable-automation", "enable-logging"])
         options.add_experimental_option('useAutomationExtension', False)
-        
+
+        # Especificar binario de Chromium para Alpine (si es necesario)
+        options.binary_location = "/usr/bin/chromium-browser"
+
         return options
     
     def _cleanup(self):

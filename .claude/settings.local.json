@@ -6,7 +6,8 @@
       "Bash(python:*)",
       "Bash(PYTHONPATH=. python app/main.py)",
       "Bash(dir)",
-      "Bash(dir:*)"
+      "Bash(dir:*)",
+      "Bash(docker build:*)"
     ],
     "deny": [],
     "ask": []
