@@ -7,6 +7,8 @@ import re
 import asyncio
 from selenium.common.exceptions import TimeoutException
 
+from app.config.cache.redis_cache import get_cache_service
+
 
 class IntegracionSunatUC:
     """
@@ -15,6 +17,8 @@ class IntegracionSunatUC:
     
     def __init__(self, sunat_scraper: SunatScraper):
         self.sunat_scraper = sunat_scraper
+        self.cache_service = get_cache_service()  # ← NUEVO: Servicio de caché
+        self.cache_ttl = 604800  # 7 días en segundos
 
     async def obtener_ruc(self, ruc: str, max_intentos: int = 3) -> Dict:
         """
@@ -34,6 +38,21 @@ class IntegracionSunatUC:
                 "detail": "El formato del RUC no es válido. Debe tener 11 dígitos.",
                 "ruc": ruc
             }
+
+        # ========================================
+        # 1. BUSCAR EN CACHÉ PRIMERO
+        # ========================================
+        cache_key = f"sunat:ruc:{ruc}"
+        cached_data = self.cache_service.get(cache_key)
+
+        if cached_data:
+            print(f"✅ Retornando datos desde caché para RUC: {ruc}")
+            return cached_data
+
+        # ========================================
+        # 2. NO ESTÁ EN CACHÉ → HACER SCRAPING
+        # ========================================
+        print(f"❌ RUC {ruc} no encontrado en caché, consultando SUNAT...")
         
         ultimo_error = None
         
@@ -64,8 +83,14 @@ class IntegracionSunatUC:
                             "ruc": ruc
                         }
 
-                # Si llegamos aquí, la consulta fue exitosa
-                print(f"Consulta exitosa en intento {intento}")
+                # ========================================
+                # 3. CONSULTA EXITOSA → GUARDAR EN CACHÉ
+                # ========================================
+                print(f"✅ Consulta exitosa en intento {intento}")
+
+                # Guardar en Redis con expiración de 7 días
+                self.cache_service.set(cache_key, resultado, self.cache_ttl)
+
                 return resultado
 
             except TimeoutException as e:

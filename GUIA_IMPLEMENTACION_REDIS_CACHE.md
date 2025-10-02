@@ -652,3 +652,203 @@ sudo apt-get install redis-server
 1. Monitorear el cache hit rate
 2. Ajustar TTL según necesidades del negocio
 3. Considerar migrar de Selenium a Requests (Fase 2)
+
+---
+
+## 🚂 Despliegue en Railway con Docker Compose
+
+### ¿Cómo funciona Railway con docker-compose?
+
+**Respuesta corta:** Railway **NO** lee automáticamente tu `docker-compose.yml` para crear servicios de Redis. Debes crear el servicio de Redis manualmente en Railway.
+
+### 🔍 Explicación detallada
+
+#### ¿Qué hace Railway con docker-compose?
+
+Railway tiene **dos formas de despliegue**:
+
+1. **Despliegue desde Dockerfile** (recomendado para Railway)
+2. **Despliegue con docker-compose** (limitado)
+
+**Importante:** Cuando subes tu proyecto a Railway:
+- Railway **detecta** si tienes un `Dockerfile` y lo usa para construir tu backend
+- Railway **NO crea automáticamente** servicios adicionales (como Redis) desde el `docker-compose.yml`
+- El archivo `docker-compose.yml` es **solo para desarrollo local**
+
+### 📋 Proceso de despliegue en Railway (Paso a Paso)
+
+#### **Opción 1: Usando el Dockerfile (RECOMENDADO)**
+
+##### 1️⃣ **Crear el servicio de Redis en Railway**
+
+1. Ve a tu proyecto en Railway
+2. Click en **"New"** → **"Database"** → **"Add Redis"**
+3. Railway creará automáticamente:
+   - Un servicio de Redis completamente configurado
+   - Una variable de entorno `REDIS_URL` con la URL de conexión
+   - Ejemplo: `redis://default:password@redis.railway.internal:6379`
+
+##### 2️⃣ **Desplegar tu Backend en Railway**
+
+1. En Railway, click en **"New"** → **"GitHub Repo"**
+2. Selecciona tu repositorio
+3. Railway detectará tu `Dockerfile` automáticamente
+4. Configura las variables de entorno:
+   - `REDIS_URL` ya estará configurada automáticamente si agregaste Redis primero
+   - Agrega otras variables que necesites (API keys, secrets, etc.)
+
+##### 3️⃣ **Conectar Backend con Redis**
+
+Railway automáticamente:
+- Crea una red privada entre tus servicios
+- Inyecta la variable `REDIS_URL` en tu backend
+- Tu código en `redis_cache.py` la detectará:
+  ```python
+  redis_url = os.getenv('REDIS_URL', 'redis://localhost:6379')
+  ```
+
+##### 4️⃣ **Verificar el despliegue**
+
+```bash
+# Probar el endpoint
+curl https://tu-proyecto.up.railway.app/health
+
+# Deberías ver:
+{
+  "status": "healthy",
+  "redis": "connected"
+}
+```
+
+---
+
+#### **Opción 2: Forzar uso de docker-compose en Railway (NO RECOMENDADO)**
+
+⚠️ **Limitaciones importantes:**
+- Railway tiene soporte limitado para docker-compose
+- No es la forma recomendada por Railway
+- Puede tener problemas con networking entre contenedores
+
+Si aún así quieres intentarlo:
+
+##### 1️⃣ Crear archivo `railway.toml`
+
+```toml
+[build]
+builder = "dockerfile"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+startCommand = "docker-compose up"
+restartPolicyType = "on_failure"
+```
+
+##### 2️⃣ Modificar `docker-compose.yml` para producción
+
+```yaml
+version: '3.8'
+
+services:
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis_data:/data
+    command: redis-server --appendonly yes
+    # Quitar ports - Railway maneja esto internamente
+
+  backend:
+    build: .
+    environment:
+      - REDIS_URL=redis://redis:6379  # Usar nombre del servicio
+    depends_on:
+      - redis
+
+volumes:
+  redis_data:
+```
+
+**Problema:** Railway puede tener dificultades con volúmenes persistentes y networking.
+
+---
+
+### 🎯 Recomendación Final: Arquitectura Multi-Servicio
+
+**La forma correcta en Railway:**
+
+```
+Railway Project
+├── 🗄️ Redis Database (creado manualmente)
+│   └── Genera: REDIS_URL=redis://...railway.internal:6379
+│
+└── 🐍 Backend Service (desde Dockerfile)
+    └── Lee: process.env.REDIS_URL
+```
+
+### 📝 Checklist para desplegar en Railway
+
+- [ ] Crear servicio de Redis en Railway manualmente
+- [ ] Verificar que Railway generó la variable `REDIS_URL`
+- [ ] Subir tu repositorio a GitHub
+- [ ] Conectar Railway con tu repositorio
+- [ ] Railway detectará tu `Dockerfile` automáticamente
+- [ ] Verificar que el backend se conecte a Redis
+- [ ] Probar endpoint `/health` para confirmar conexión
+
+### 🆚 Comparación: Local vs Railway
+
+| Aspecto | Desarrollo Local | Railway |
+|---------|------------------|---------|
+| **Redis** | `docker-compose up` lo crea | Debes crearlo manualmente |
+| **Networking** | Docker network automático | Railway network privado |
+| **Variables** | `.env` o `docker-compose.yml` | Panel de Railway |
+| **docker-compose.yml** | ✅ Usado | ❌ Ignorado (solo usa Dockerfile) |
+| **Persistencia** | Volumen local | Volumen gestionado por Railway |
+
+### ❓ Preguntas Frecuentes sobre Railway
+
+#### ¿Por qué Railway no lee mi docker-compose.yml?
+
+Railway está optimizado para **microservicios independientes**, no para orquestar múltiples contenedores desde un solo archivo. Esto da más flexibilidad para escalar cada servicio por separado.
+
+#### ¿Necesito modificar mi código para Railway?
+
+**No.** Tu código ya está preparado porque usa `os.getenv('REDIS_URL')`, que funciona tanto localmente como en Railway.
+
+#### ¿Qué pasa con los datos de Redis en Railway?
+
+Railway mantiene los datos de Redis de forma persistente. Solo se borrarán si eliminas el servicio.
+
+#### ¿Puedo usar el mismo docker-compose.yml para otros servicios de nube?
+
+Sí, servicios como **Render**, **DigitalOcean App Platform** o **AWS** tienen mejor soporte para docker-compose que Railway.
+
+#### ¿Cuánto cuesta Redis en Railway?
+
+Railway cobra por:
+- Uso de recursos (RAM/CPU)
+- Plan gratuito: $5 USD de crédito/mes
+- Redis típicamente usa ~10-50 MB RAM
+
+---
+
+### 🎓 Resumen: Docker Compose en Railway
+
+**TL;DR:**
+
+1. ❌ Railway **NO** lee `docker-compose.yml` automáticamente
+2. ✅ `docker-compose.yml` es **solo para desarrollo local**
+3. ✅ En Railway, crea Redis **manualmente** desde el panel
+4. ✅ Railway conecta servicios automáticamente con variables de entorno
+5. ✅ Tu código funciona igual en local y en Railway (gracias a `REDIS_URL`)
+
+**Flujo correcto:**
+
+```bash
+# Local (desarrollo)
+docker-compose up  # Crea Redis + Backend automáticamente
+
+# Railway (producción)
+1. Crear Redis manualmente en Railway
+2. Desplegar Backend desde GitHub
+3. Railway conecta ambos automáticamente
+```

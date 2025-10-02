@@ -1,0 +1,55 @@
+version: '3.8'
+
+services:
+  # ========================================
+  # SERVICIO DE REDIS
+  # ========================================
+  redis:
+    image: redis:7-alpine  # Imagen oficial de Redis (versión ligera)
+    container_name: crm_redis
+    ports:
+      - "6379:6379"  # Puerto por defecto de Redis
+    volumes:
+      - redis_data:/data  # Aquí se guardan los datos de forma persistente
+    command: redis-server --appendonly yes  # Habilita persistencia en disco
+    networks:
+      - crm_network
+    restart: unless-stopped  # Se reinicia automáticamente si falla
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # ========================================
+  # SERVICIO DEL BACKEND (FastAPI)
+  # ========================================
+  backend:
+    build: .  # Usa el Dockerfile en la raíz del proyecto
+    container_name: crm_backend
+    ports:
+      - "8000:8000"  # Puerto de FastAPI
+    environment:
+      # URL de conexión a Redis (usa el nombre del servicio "redis")
+      - REDIS_URL=redis://redis:6379
+      - PYTHONUNBUFFERED=1
+    depends_on:
+      redis:
+        condition: service_healthy  # Espera a que Redis esté listo
+    networks:
+      - crm_network
+    restart: unless-stopped
+
+# ========================================
+# VOLÚMENES (Persistencia de datos)
+# ========================================
+volumes:
+  redis_data:
+    driver: local  # Los datos de Redis se guardan en tu disco local
+
+# ========================================
+# REDES (Para que los contenedores se comuniquen)
+# ========================================
+networks:
+  crm_network:
+    driver: bridge
