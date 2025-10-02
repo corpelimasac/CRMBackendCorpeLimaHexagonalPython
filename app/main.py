@@ -45,7 +45,7 @@ def create_app() -> FastAPI:
 # Crear la instancia de la aplicación
 app = create_app()
 
-@app.get("/")
+@app.get("/") 
 def read_root():
     return {"status": "API is running"}
 
