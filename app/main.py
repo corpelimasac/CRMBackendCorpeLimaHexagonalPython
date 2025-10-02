@@ -49,12 +49,13 @@ app = create_app()
 def read_root():
     return {"status": "API is running"}
 
-"""@app.on_event("startup")
+
+@app.on_event("startup")
 async def startup_event():
     scraper = SunatScraper()
     scraper.get_driver()  # Inicializa Chrome
     print("✅ WebDriver pre-calentado")
-"""
+
 
 if __name__ == "__main__":
     import uvicorn
