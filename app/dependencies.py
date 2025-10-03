@@ -67,7 +67,8 @@ def get_generate_purchase_order_use_case(db: Session = Depends(get_db)) -> Gener
     
 def get_integracion_sunat_use_case() -> IntegracionSunatUC:
     import os
-    # En Docker headless=True, en local headless=False para ver el navegador
-    is_docker = os.path.exists('/.dockerenv')
-    sunat_scraper = SunatScrapper(headless=is_docker)
+    # Usar headless=True en producción (Railway/Docker) y headless=False en local
+    # Railway y otros entornos cloud suelen definir PORT o RAILWAY_ENVIRONMENT
+    is_production = os.getenv('RAILWAY_ENVIRONMENT') is not None or os.path.exists('/.dockerenv')
+    sunat_scraper = SunatScrapper(headless=is_production)
     return IntegracionSunatUC(sunat_scraper)
