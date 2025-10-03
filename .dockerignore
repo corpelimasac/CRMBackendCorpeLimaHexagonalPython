@@ -1,62 +1,25 @@
-# Git
-.git
-.gitignore
+# Entornos virtuales
+.venv/
+venv/
+env/
 
 # Python
-__pycache__
-*.pyc
-*.pyo
-*.pyd
-.Python
-env
-pip-log.txt
-pip-delete-this-directory.txt
-.tox
-.coverage
-.coverage.*
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-*.log
-.git
-.mypy_cache
-.pytest_cache
-.hypothesis
+__pycache__/
+*.py[cod]
+*.so
 
-# Environments
-.env
-.venv
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+# Testing
+.pytest_cache/
 
 # IDEs
 .vscode/
 .idea/
-*.swp
-*.swo
-*~
 
-# OS
-.DS_Store
-.DS_Store?
-._*
-.Spotlight-V100
-.Trashes
-ehthumbs.db
-Thumbs.db
+# Git
+.git/
 
-# Project specific
-temp_files/
-*.xlsx
-*.pdf
-test_*.py
-README.md
-.gitignore
+# Docker
+docker-compose.yml
 
-# Alembic
-alembic/versions/*.py
-!alembic/versions/d333fc65430f_added_account_table.py
+# Logs
+*.log

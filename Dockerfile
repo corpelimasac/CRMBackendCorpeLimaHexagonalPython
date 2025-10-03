@@ -1,32 +1,11 @@
 # ============================================
-# ETAPA 1: Imagen base con Chrome pre-instalado
+# Dockerfile para FastAPI con Playwright
 # ============================================
-FROM zenika/alpine-chrome:with-chromedriver AS chrome-base
+FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
 
-# ============================================
-# ETAPA 2: Imagen de producción optimizada
-# ============================================
-FROM python:3.11-alpine
-
-# Variables de entorno optimizadas
+# Variables de entorno
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=off
-ENV CHROME_BIN=/usr/bin/chromium-browser
-ENV CHROME_PATH=/usr/bin/chromium-browser
-ENV CHROMEDRIVER_PATH=/usr/bin/chromedriver
-
-# Instalar dependencias mínimas necesarias para Python y Chrome
-RUN apk add --no-cache \
-    # Dependencias de Chrome/Chromium
-    chromium \
-    chromium-chromedriver \
-    # Dependencias de compilación para algunos paquetes Python
-    gcc \
-    musl-dev \
-    libffi-dev \
-    # Utilidades
-    bash \
-    && ln -s /usr/bin/chromium-browser /usr/bin/google-chrome
 
 # Crear directorio de trabajo
 WORKDIR /app

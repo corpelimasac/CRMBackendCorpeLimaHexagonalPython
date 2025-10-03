@@ -1,3 +1,4 @@
+from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScrapper
 from app.adapters.outbound.storage.local_file_storage import LocalFileStorageAdapter
 from app.adapters.outbound.storage.aws_file_storage import AWSFileStorage
 from app.adapters.outbound.invoice.xml_to_pdf_processor import XmlToPdfProcessorAdapter
@@ -17,7 +18,7 @@ from app.adapters.outbound.database.repositories.ordenes_compra_repository impor
 from app.adapters.outbound.database.repositories.cotizacion_version_repository import CotizacionVersionesRepository
 from app.adapters.outbound.excel.openpyxl_excel_generator import OpenPyXLExcelGenerator
 from app.core.use_cases.integracion_sunat.integracion_sunat_uc import IntegracionSunatUC
-from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScraper
+
 
 # --- Creación de Instancias (Singletons para eficiencia) ---
 
@@ -65,5 +66,8 @@ def get_generate_purchase_order_use_case(db: Session = Depends(get_db)) -> Gener
     )
     
 def get_integracion_sunat_use_case() -> IntegracionSunatUC:
-    sunat_scraper = SunatScraper()
+    import os
+    # En Docker headless=True, en local headless=False para ver el navegador
+    is_docker = os.path.exists('/.dockerenv')
+    sunat_scraper = SunatScrapper(headless=is_docker)
     return IntegracionSunatUC(sunat_scraper)

@@ -2,10 +2,8 @@
 Caso de uso para la integración con SUNAT
 """
 from typing import Dict
-from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScraper
-import re
+from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScrapper
 import asyncio
-from selenium.common.exceptions import TimeoutException
 
 from app.config.cache.redis_cache import get_cache_service
 
@@ -14,22 +12,21 @@ class IntegracionSunatUC:
     """
     Caso de uso para consultar información de RUC en SUNAT
     """
-    
-    def __init__(self, sunat_scraper: SunatScraper):
+
+    def __init__(self, sunat_scraper: SunatScrapper):
         self.sunat_scraper = sunat_scraper
-        self.cache_service = get_cache_service()  # ← NUEVO: Servicio de caché
+        self.cache_service = get_cache_service()
         self.cache_ttl = 604800  # 7 días en segundos
 
-    async def obtener_ruc(self, ruc: str, max_intentos: int = 3) -> Dict:
+    async def obtener_ruc(self, ruc: str) -> Dict:
         """
-        Obtiene información de un RUC desde SUNAT con mecanismo de reintentos
-        
+        Obtiene información de un RUC desde SUNAT
+
         Args:
             ruc (str): Número de RUC a consultar
-            max_intentos (int): Número máximo de intentos
-            
+
         Returns:
-            Dict: Información del RUC o error
+            Dict: Información del RUC o mensaje de error
         """
         # Validar formato de RUC
         if not self._validar_ruc(ruc):
@@ -39,115 +36,61 @@ class IntegracionSunatUC:
                 "ruc": ruc
             }
 
-        # ========================================
         # 1. BUSCAR EN CACHÉ PRIMERO
-        # ========================================
         cache_key = f"sunat:ruc:{ruc}"
         cached_data = self.cache_service.get(cache_key)
 
         if cached_data:
-            print(f"✅ Retornando datos desde caché para RUC: {ruc}")
+            print(f"Retornando datos desde cache para RUC: {ruc}")
             return cached_data
 
-        # ========================================
-        # 2. NO ESTÁ EN CACHÉ → HACER SCRAPING
-        # ========================================
-        print(f"❌ RUC {ruc} no encontrado en caché, consultando SUNAT...")
-        
-        ultimo_error = None
-        
-        for intento in range(1, max_intentos + 1):
-            try:
-                print(f"Intento {intento}/{max_intentos} para RUC {ruc}")
+        # 2. NO ESTÁ EN CACHÉ, CONSULTAR SUNAT
+        print(f"RUC {ruc} no encontrado en cache, consultando SUNAT...")
 
-                # Realizar consulta en SUNAT con modo rápido por defecto
-                resultado = self.sunat_scraper.consultar_ruc(ruc, modo_rapido=True)
+        try:
+            # Ejecutar consulta síncrona de Playwright sin bloquear el event loop
+            resultado = await asyncio.to_thread(self.sunat_scraper.consultar_ruc, ruc)
 
-                # Verificar si hubo error en la consulta
-                if "error" in resultado and resultado["razonSocial"] == "Error en consulta":
-                    ultimo_error = resultado.get('error', 'Error desconocido')
+            # 3. VERIFICAR SI HUBO ERROR EN LA CONSULTA
+            if resultado.get("razonSocial") == "Error en consulta":
+                error_msg = resultado.get("error", "Error desconocido")
+                print(f"Error al consultar RUC {ruc}: {error_msg}")
+                return {
+                    "message": "Error al consultar RUC",
+                    "detail": f"No se pudo obtener información del RUC {ruc}. Error: {error_msg}",
+                    "ruc": ruc
+                }
 
-                    # Verificar si es un error de timeout para recrear el driver
-                    if "timeout" in ultimo_error.lower() or "timed out" in ultimo_error.lower():
-                        print(f"Timeout detectado, recreando WebDriver...")
-                        self.sunat_scraper.driver_manager.cleanup()
-                        await asyncio.sleep(2)  # Pausa más larga para timeouts
+            # 4. CONSULTA EXITOSA, GUARDAR EN CACHÉ
+            print(f"Consulta exitosa para RUC: {ruc}")
+            self.cache_service.set(cache_key, resultado, self.cache_ttl)
 
-                    if intento < max_intentos:
-                        print(f"Error en intento {intento}, reintentando...")
-                        continue
-                    else:
-                        return {
-                            "message": "Error al consultar RUC",
-                            "detail": f"No se pudo obtener información del RUC {ruc} después de {max_intentos} intentos. Último error: {ultimo_error}",
-                            "ruc": ruc
-                        }
+            return resultado
 
-                # ========================================
-                # 3. CONSULTA EXITOSA → GUARDAR EN CACHÉ
-                # ========================================
-                print(f"✅ Consulta exitosa en intento {intento}")
-
-                # Guardar en Redis con expiración de 7 días
-                self.cache_service.set(cache_key, resultado, self.cache_ttl)
-
-                return resultado
-
-            except TimeoutException as e:
-                ultimo_error = f"Timeout del WebDriver: {str(e)}"
-                print(f"Timeout en intento {intento}: {ultimo_error}")
-
-                # Para errores de timeout, limpiar el driver y reintentar
-                print("Recreando WebDriver debido a timeout...")
-                self.sunat_scraper.driver_manager.cleanup()
-
-                if intento < max_intentos:
-                    print(f"Reintentando en 3 segundos...")
-                    await asyncio.sleep(3)
-                    continue
-
-            except Exception as e:
-                ultimo_error = str(e)
-                print(f"Error en intento {intento}: {ultimo_error}")
-
-                # Verificar si el error contiene indicios de timeout
-                if "timeout" in ultimo_error.lower() or "timed out" in ultimo_error.lower():
-                    print("Error relacionado con timeout, recreando WebDriver...")
-                    self.sunat_scraper.driver_manager.cleanup()
-                    await asyncio.sleep(2)
-                elif "renderer" in ultimo_error.lower():
-                    print("Error del renderer, recreando WebDriver...")
-                    self.sunat_scraper.driver_manager.cleanup()
-                    await asyncio.sleep(2)
-
-                if intento < max_intentos:
-                    print(f"Reintentando en 2 segundos...")
-                    await asyncio.sleep(2)
-                    continue
-        
-        # Si llegamos aquí, todos los intentos fallaron
-        return {
-            "message": "Error al consultar RUC",
-            "detail": f"Error interno al consultar el RUC {ruc} después de {max_intentos} intentos. Último error: {ultimo_error}",
-            "ruc": ruc
-        }
+        except Exception as e:
+            print(f"Error inesperado al consultar RUC {ruc}: {str(e)}")
+            return {
+                "message": "Error al consultar RUC",
+                "detail": f"Error interno al consultar el RUC {ruc}: {str(e)}",
+                "ruc": ruc
+            }
 
     def _validar_ruc(self, ruc: str) -> bool:
         """
         Valida el formato del RUC
-        
+
         Args:
             ruc (str): Número de RUC a validar
-            
+
         Returns:
             bool: True si el formato es válido
         """
         # El RUC debe tener exactamente 11 dígitos
         if not ruc or len(ruc) != 11:
             return False
-            
+
         # Debe contener solo números
         if not ruc.isdigit():
             return False
-            
+
         return True

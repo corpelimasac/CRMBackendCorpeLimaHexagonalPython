@@ -33,7 +33,7 @@ class SunatRucResponse(BaseModel):
     EsAgenteRetencion: bool = Field(..., description="Si es agente de retención")
     actividadEconomica: str = Field(..., description="Actividad económica principal")
     tipoContribuyente: str = Field(..., description="Tipo de contribuyente")
-    condicion_contribuyente: str = Field(..., description="Condición del contribuyente")
+    condicionContribuyente: str = Field(..., description="Condición del contribuyente")
     numeroTrabajadores: str = Field(..., description="Número de trabajadores")
     prestadoresdeServicios: str = Field(..., description="Número de prestadores de servicios")
     representanteLegal: RepresentanteLegal = Field(..., description="Información del representante legal")
@@ -54,7 +54,7 @@ class SunatRucResponse(BaseModel):
                 "EsAgenteRetencion": True,
                 "actividadEconomica": "VENTA AL POR MAYOR NO ESPECIALIZADA",
                 "tipoContribuyente": "EMPRESA INDIVIDUAL DE RESP. LTDA",
-                "condicion_contribuyente": "ACTIVO",
+                "condicionContribuyente": "ACTIVO",
                 "numeroTrabajadores": "12",
                 "prestadoresdeServicios": "1",
                 "representanteLegal": {

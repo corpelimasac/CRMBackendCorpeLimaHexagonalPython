@@ -4,7 +4,7 @@ Router para la integración con SUNAT
 from fastapi import APIRouter, HTTPException, Depends
 from app.adapters.inbound.api.schemas.sunat_schemas import SunatRucResponse, SunatErrorResponse
 from app.core.use_cases.integracion_sunat.integracion_sunat_uc import IntegracionSunatUC
-from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScraper
+from app.adapters.outbound.external_services.sunat.sunat_scraper import SunatScrapper
 from typing import Union
 
 router = APIRouter(prefix="/integracion-sunat", tags=["Integración con Sunat"])
@@ -14,7 +14,10 @@ def get_sunat_use_case() -> IntegracionSunatUC:
     """
     Dependencia para obtener el caso de uso de SUNAT
     """
-    sunat_scraper = SunatScraper()
+    import os
+    # En Docker headless=True, en local headless=False para ver el navegador
+    is_docker = os.path.exists('/.dockerenv')
+    sunat_scraper = SunatScrapper(headless=is_docker)
     return IntegracionSunatUC(sunat_scraper)
 
 

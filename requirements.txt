@@ -38,10 +38,7 @@ openpyxl
 python-dotenv
 
 
-webdriver-manager
-selenium
-requests
-
 pandas
+playwright==1.48.0
 
 redis==5.0.1
