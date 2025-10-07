@@ -10,7 +10,7 @@ aiomysql==0.2.0
 alembic==1.13.1
 
 # Validación y serialización
-pydantic[email]==2.5.0
+pydantic[email]>=2.10,<3
 pydantic-settings==2.0.3
 
 # Configuración
@@ -34,9 +34,6 @@ reportlab==4.0.4
 
 boto3
 openpyxl
-
-python-dotenv
-
 
 pandas
 playwright==1.48.0
