@@ -14,12 +14,16 @@ settings = get_settings()
 async def health_check():
     """
     Endpoint de health check para verificar que la API está funcionando
+    Incluye información del entorno actual
     """
     return {
         "status": "healthy",
         "timestamp": datetime.utcnow().isoformat(),
         "version": settings.version,
-        "app_name": settings.app_name
+        "app_name": settings.app_name,
+        "environment": settings.environment,
+        "debug": settings.debug,
+        "database": settings.database_url.split('@')[-1] if '@' in settings.database_url else "local"
     }
 
 

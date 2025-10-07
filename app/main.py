@@ -3,11 +3,72 @@ FastAPI Application with Hexagonal Architecture
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from contextlib import asynccontextmanager
+import logging
+import sys
 
 from app.adapters.inbound.api.routers import health, generar_oc, dolar, upload_router, cotizacion_finalizada_router, proveedores_router, ordenes_compra, integracion_sunat
 from app.config.settings import get_settings
+from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
 
+# Configurar logging
 settings = get_settings()
+
+logging.basicConfig(
+    level=logging.INFO if settings.debug else logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(sys.stdout)
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifecycle de la aplicación FastAPI
+
+    Gestiona el inicio y cierre del EventDispatcher para eventos asíncronos
+    """
+    # Startup - Mostrar en consola directamente
+    startup_msg = f"""
+{'=' * 60}
+🚀 Iniciando {settings.app_name}
+📦 Versión: {settings.version}
+🌍 Entorno: {settings.environment.upper()}
+🐛 Debug: {settings.debug}
+🗄️  Base de datos: {settings.database_url.split('@')[-1] if '@' in settings.database_url else settings.database_url}
+{'=' * 60}
+"""
+    print(startup_msg)
+    logger.info(startup_msg)
+
+    event_dispatcher = get_event_dispatcher()
+    workers_msg = f"✅ EventDispatcher inicializado con {event_dispatcher.executor._max_workers} workers"
+    print(workers_msg)
+    logger.info(workers_msg)
+
+    yield
+
+    # Shutdown
+    shutdown_msg = f"""
+{'=' * 60}
+🛑 Apagando aplicación - Esperando eventos pendientes...
+"""
+    print(shutdown_msg)
+    logger.info(shutdown_msg)
+
+    event_dispatcher.shutdown(wait=True, timeout=settings.evento_financiero_timeout)
+
+    final_msg = f"""
+✅ Aplicación cerrada correctamente
+{'=' * 60}
+"""
+    print(final_msg)
+    logger.info(final_msg)
+
 
 def create_app() -> FastAPI:
     """
@@ -18,7 +79,8 @@ def create_app() -> FastAPI:
         description="Sistema CRM implementado con arquitectura hexagonal",
         version="1.0.0",
         docs_url="/docs",
-        redoc_url="/redoc"
+        redoc_url="/redoc",
+        lifespan=lifespan  # Configurar lifecycle
     )
     allowed_origins=settings.cors_origins.split(",")  if settings.cors_origins else [] 
     # Configurar CORS
