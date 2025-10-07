@@ -13,4 +13,4 @@ class ContactResponseDTO(BaseModel):
     correo:Optional[str] = Field(None, description="Correo del contacto del proveedor")
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 

@@ -1,1 +1,125 @@
+# Variables de entorno
 .env
+.env.local
+.env.*.local
+
+# Entornos virtuales Python
+.venv/
+venv/
+ENV/
+env/
+.virtualenv/
+
+# Archivos de caché Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribución / empaquetado
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Instalador
+pip-log.txt
+pip-delete-this-directory.txt
+
+# Tests y cobertura
+htmlcov/
+.tox/
+.coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.pytest_cache/
+
+# Jupyter Notebook
+.ipynb_checkpoints
+
+# pyenv
+.python-version
+
+# IDEs y editores
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Logs
+*.log
+logs/
+*.out
+
+# Base de datos local
+*.db
+*.sqlite
+*.sqlite3
+
+# Archivos temporales
+*.tmp
+*.temp
+tmp/
+temp/
+
+# Migraciones (opcional, depende del proyecto)
+# alembic/versions/*.py
+
+# Archivos específicos del sistema operativo
+Thumbs.db
+Desktop.ini
+
+# Archivos de backup
+*.bak
+*.backup
+
+# Certificados y claves (seguridad)
+*.pem
+*.key
+*.crt
+*.cer
+
+# Archivos subidos por usuarios (si aplica)
+uploads/
+media/
+static/uploads/
+
+# Playwright browsers
+playwright/
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Configuración local de Docker
+docker-compose.override.yml
+
+# Archivos de sesión Redis
+dump.rdb
