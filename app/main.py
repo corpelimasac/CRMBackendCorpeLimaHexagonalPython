@@ -15,11 +15,12 @@ from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
 settings = get_settings()
 
 logging.basicConfig(
-    level=logging.INFO if settings.debug else logging.WARNING,
+    level=logging.DEBUG,  # Siempre DEBUG para ver todos los errores
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
-    ]
+    ],
+    force=True  # Forzar reconfiguración
 )
 
 logger = logging.getLogger(__name__)
@@ -83,6 +84,29 @@ def create_app() -> FastAPI:
         lifespan=lifespan  # Configurar lifecycle
     )
     allowed_origins=settings.cors_origins.split(",")  if settings.cors_origins else [] 
+    # Middleware para loggear TODOS los requests
+    @app.middleware("http")
+    async def log_requests(request, call_next):
+        import time
+        import traceback
+
+        start_time = time.time()
+        print(f"\n→ REQUEST: {request.method} {request.url.path}")
+
+        try:
+            response = await call_next(request)
+            process_time = time.time() - start_time
+            print(f"← RESPONSE: {response.status_code} ({process_time:.2f}s)")
+            return response
+        except Exception as e:
+            process_time = time.time() - start_time
+            print(f"\n!!! EXCEPCION EN MIDDLEWARE ({process_time:.2f}s):")
+            print(f"Path: {request.url.path}")
+            print(f"Error: {str(e)}")
+            print(f"Tipo: {type(e).__name__}")
+            traceback.print_exc()
+            raise
+
     # Configurar CORS
     app.add_middleware(
         CORSMiddleware,
@@ -91,6 +115,32 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+
+    # Middleware para capturar excepciones NO HTTP
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request, exc):
+        # No capturar excepciones HTTP (como 405 Method Not Allowed)
+        from fastapi.exceptions import HTTPException
+        from starlette.exceptions import HTTPException as StarletteHTTPException
+
+        if isinstance(exc, (HTTPException, StarletteHTTPException)):
+            # Dejar que FastAPI maneje estos errores
+            raise exc
+
+        # Capturar otros errores
+        import traceback
+        error_trace = traceback.format_exc()
+        print(f"\n[EXCEPTION HANDLER] ERROR:")
+        print(f"Path: {request.url.path}")
+        print(f"Error: {str(exc)}")
+        print(f"Traceback:\n{error_trace}")
+        logger.error(f"Error en {request.url.path}: {str(exc)}\n{error_trace}")
+
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc), "path": request.url.path, "type": type(exc).__name__}
+        )
 
     # Registrar rutas
     app.include_router(health.router, prefix="/api", tags=["Health"])
