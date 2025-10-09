@@ -59,18 +59,19 @@ class ProcesarRegistroCompra:
             event_data: Datos del evento
         """
         id_cotizacion = event_data['id_cotizacion']
+        id_cotizacion_versiones = event_data.get('id_cotizacion_versiones')
 
-        logger.info(f"Procesando creación de OC para cotización {id_cotizacion}")
+        logger.info(f"Procesando creación de OC para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
 
-        # Obtener todas las OC de esta cotización
-        ordenes = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion)
+        # Obtener todas las OC de esta cotización y versión
+        ordenes = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
         if not ordenes:
-            logger.warning(f"No se encontraron órdenes para cotización {id_cotizacion}")
+            logger.warning(f"No se encontraron órdenes para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
             return
 
         # Verificar si ya existe registro
-        registro_existente = self.registro_repo.obtener_por_cotizacion(id_cotizacion)
+        registro_existente = self.registro_repo.obtener_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
         if registro_existente:
             # Recalcular con TC guardado
@@ -91,10 +92,11 @@ class ProcesarRegistroCompra:
         self.registro_repo.guardar_o_actualizar(
             id_cotizacion=id_cotizacion,
             ordenes=ordenes,
-            datos_calculados=datos
+            datos_calculados=datos,
+            id_cotizacion_versiones=id_cotizacion_versiones
         )
 
-        logger.info(f"✅ Registro de compra guardado para cotización {id_cotizacion}")
+        logger.info(f"✅ Registro de compra guardado para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
 
     def _handle_edicion(self, event_data: dict):
         """
@@ -118,11 +120,12 @@ class ProcesarRegistroCompra:
             event_data: Datos del evento
         """
         id_cotizacion = event_data['id_cotizacion_nueva']
+        id_cotizacion_versiones = event_data.get('id_cotizacion_versiones')
 
-        logger.info(f"Recalculando registro para cotización {id_cotizacion}")
+        logger.info(f"Recalculando registro para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
 
         # Obtener registro existente (debe existir)
-        registro = self.registro_repo.obtener_por_cotizacion(id_cotizacion)
+        registro = self.registro_repo.obtener_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
         if not registro:
             logger.warning(f"No existe registro para cotización {id_cotizacion}, creando nuevo")
@@ -135,10 +138,10 @@ class ProcesarRegistroCompra:
         logger.info(f"Usando TC guardado: {tc}")
 
         # Obtener todas las OC actualizadas
-        ordenes = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion)
+        ordenes = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
         if not ordenes:
-            logger.warning(f"No quedan órdenes para cotización {id_cotizacion}, eliminando registro")
+            logger.warning(f"No quedan órdenes para cotización {id_cotizacion} versión {id_cotizacion_versiones}, eliminando registro")
             self.registro_repo.eliminar_registro(registro.compra_id)
             return
 
@@ -149,10 +152,11 @@ class ProcesarRegistroCompra:
         self.registro_repo.guardar_o_actualizar(
             id_cotizacion=id_cotizacion,
             ordenes=ordenes,
-            datos_calculados=datos
+            datos_calculados=datos,
+            id_cotizacion_versiones=id_cotizacion_versiones
         )
 
-        logger.info(f"✅ Registro actualizado para cotización {id_cotizacion}")
+        logger.info(f"✅ Registro actualizado para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
 
     def _handle_cambio_cotizacion(self, event_data: dict):
         """
@@ -165,22 +169,24 @@ class ProcesarRegistroCompra:
         """
         id_cotizacion_anterior = event_data['id_cotizacion_anterior']
         id_cotizacion_nueva = event_data['id_cotizacion_nueva']
+        id_cotizacion_versiones_anterior = event_data.get('id_cotizacion_versiones_anterior')
+        id_cotizacion_versiones_nueva = event_data.get('id_cotizacion_versiones_nueva')
         id_orden = event_data['id_orden']
 
         logger.info(
-            f"Moviendo OC {id_orden} de cotización {id_cotizacion_anterior} "
-            f"a cotización {id_cotizacion_nueva}"
+            f"Moviendo OC {id_orden} de cotización {id_cotizacion_anterior} versión {id_cotizacion_versiones_anterior} "
+            f"a cotización {id_cotizacion_nueva} versión {id_cotizacion_versiones_nueva}"
         )
 
         # === PASO 1: Limpiar cotización anterior ===
-        logger.info(f"Procesando cotización anterior {id_cotizacion_anterior}")
+        logger.info(f"Procesando cotización anterior {id_cotizacion_anterior} versión {id_cotizacion_versiones_anterior}")
 
-        registro_anterior = self.registro_repo.obtener_por_cotizacion(id_cotizacion_anterior)
+        registro_anterior = self.registro_repo.obtener_por_cotizacion(id_cotizacion_anterior, id_cotizacion_versiones_anterior)
 
         if registro_anterior:
             # Obtener OC restantes de cotización anterior
             ordenes_restantes = self.registro_repo.obtener_ordenes_por_cotizacion(
-                id_cotizacion_anterior
+                id_cotizacion_anterior, id_cotizacion_versiones_anterior
             )
 
             if len(ordenes_restantes) > 0:
@@ -194,7 +200,8 @@ class ProcesarRegistroCompra:
                 self.registro_repo.guardar_o_actualizar(
                     id_cotizacion=id_cotizacion_anterior,
                     ordenes=ordenes_restantes,
-                    datos_calculados=datos
+                    datos_calculados=datos,
+                    id_cotizacion_versiones=id_cotizacion_versiones_anterior
                 )
             else:
                 logger.info("No quedan órdenes en cotización anterior, eliminando registro")
@@ -202,10 +209,10 @@ class ProcesarRegistroCompra:
                 self.registro_repo.eliminar_registro(registro_anterior.compra_id)
 
         # === PASO 2: Agregar a nueva cotización ===
-        logger.info(f"Procesando nueva cotización {id_cotizacion_nueva}")
+        logger.info(f"Procesando nueva cotización {id_cotizacion_nueva} versión {id_cotizacion_versiones_nueva}")
 
-        registro_nuevo = self.registro_repo.obtener_por_cotizacion(id_cotizacion_nueva)
-        ordenes_nuevas = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion_nueva)
+        registro_nuevo = self.registro_repo.obtener_por_cotizacion(id_cotizacion_nueva, id_cotizacion_versiones_nueva)
+        ordenes_nuevas = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion_nueva, id_cotizacion_versiones_nueva)
 
         if not ordenes_nuevas:
             logger.warning(f"No se encontraron órdenes para nueva cotización {id_cotizacion_nueva}")
@@ -228,7 +235,8 @@ class ProcesarRegistroCompra:
         self.registro_repo.guardar_o_actualizar(
             id_cotizacion=id_cotizacion_nueva,
             ordenes=ordenes_nuevas,
-            datos_calculados=datos
+            datos_calculados=datos,
+            id_cotizacion_versiones=id_cotizacion_versiones_nueva
         )
 
         logger.info(

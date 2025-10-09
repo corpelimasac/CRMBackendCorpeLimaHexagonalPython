@@ -17,25 +17,41 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
     def __init__(self, db: Session):
         self.db = db
 
-    def obtener_por_cotizacion(self, id_cotizacion: int) -> Optional[RegistroCompraModel]:
+    def obtener_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> Optional[RegistroCompraModel]:
         """
-        Obtiene el registro de compra asociado a una cotización
+        Obtiene el registro de compra asociado a una cotización y versión
+        usando join con ordenes_compra
 
         Args:
             id_cotizacion: ID de la cotización
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional para compatibilidad)
 
         Returns:
             RegistroCompraModel: Registro encontrado o None
         """
         try:
-            registro = self.db.query(RegistroCompraModel).filter(
-                RegistroCompraModel.id_cotizacion == id_cotizacion
-            ).first()
+            # Obtener registro via join con ordenes_compra
+            query = self.db.query(RegistroCompraModel).join(
+                OrdenesCompraModel,
+                RegistroCompraModel.compra_id == OrdenesCompraModel.compra_id
+            ).filter(
+                OrdenesCompraModel.id_cotizacion == id_cotizacion
+            )
+            
+            # Filtrar por versión si se proporciona
+            if id_cotizacion_versiones is not None:
+                query = query.filter(
+                    OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
+                )
+            
+            registro = query.first()
 
             if registro:
-                logger.info(f"Registro de compra encontrado para cotización {id_cotizacion}")
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                logger.info(f"Registro de compra encontrado para cotización {id_cotizacion}{version_info}")
             else:
-                logger.info(f"No existe registro de compra para cotización {id_cotizacion}")
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                logger.info(f"No existe registro de compra para cotización {id_cotizacion}{version_info}")
 
             return registro
 
@@ -43,23 +59,33 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al obtener registro de compra: {e}")
             raise
 
-    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int) -> List[OrdenesCompraModel]:
+    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> List[OrdenesCompraModel]:
         """
-        Obtiene todas las órdenes de compra de una cotización
+        Obtiene todas las órdenes de compra de una cotización y versión específica
 
         Args:
             id_cotizacion: ID de la cotización
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional para compatibilidad)
 
         Returns:
             List[OrdenesCompraModel]: Lista de órdenes de compra
         """
         try:
-            ordenes = self.db.query(OrdenesCompraModel).filter(
+            query = self.db.query(OrdenesCompraModel).filter(
                 OrdenesCompraModel.id_cotizacion == id_cotizacion,
                 OrdenesCompraModel.activo == True
-            ).all()
+            )
+            
+            # Filtrar por versión si se proporciona
+            if id_cotizacion_versiones is not None:
+                query = query.filter(
+                    OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
+                )
+            
+            ordenes = query.all()
 
-            logger.info(f"Encontradas {len(ordenes)} órdenes para cotización {id_cotizacion}")
+            version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+            logger.info(f"Encontradas {len(ordenes)} órdenes para cotización {id_cotizacion}{version_info}")
             return ordenes
 
         except Exception as e:
@@ -70,7 +96,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         self,
         id_cotizacion: int,
         ordenes: List[OrdenesCompraModel],
-        datos_calculados: dict
+        datos_calculados: dict,
+        id_cotizacion_versiones: int = None
     ) -> RegistroCompraModel:
         """
         Guarda o actualiza un registro de compra con sus órdenes
@@ -85,12 +112,13 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         """
         try:
             # Buscar registro existente
-            registro = self.obtener_por_cotizacion(id_cotizacion)
+            registro = self.obtener_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
             if registro:
                 logger.info(f"Actualizando registro de compra existente para cotización {id_cotizacion}")
 
                 # Actualizar montos
+                registro.moneda = datos_calculados['moneda']
                 registro.monto_total_dolar = datos_calculados['monto_total_dolar']
                 registro.tipo_cambio_sunat = datos_calculados['tipo_cambio_sunat']
                 registro.monto_total_soles = datos_calculados['monto_total_soles']
@@ -98,7 +126,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.fecha_orden_compra = datos_calculados['fecha_orden_compra']
                 registro.tipo_empresa = datos_calculados['tipo_empresa']
 
-                # Eliminar órdenes anteriores
+                # Eliminar detalles anteriores de registro_compra_ordenes
                 self.db.query(RegistroCompraOrdenModel).filter(
                     RegistroCompraOrdenModel.compra_id == registro.compra_id
                 ).delete()
@@ -108,8 +136,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
                 # Crear nuevo registro
                 registro = RegistroCompraModel(
-                    id_cotizacion=id_cotizacion,
                     fecha_orden_compra=datos_calculados['fecha_orden_compra'],
+                    moneda=datos_calculados['moneda'],
                     monto_total_dolar=datos_calculados['monto_total_dolar'],
                     tipo_cambio_sunat=datos_calculados['tipo_cambio_sunat'],
                     monto_total_soles=datos_calculados['monto_total_soles'],
@@ -119,14 +147,20 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 self.db.add(registro)
                 self.db.flush()  # Obtener ID
 
-            # Insertar órdenes actualizadas
+            # Actualizar compra_id en ordenes_compra y crear detalles en registro_compra_ordenes
             for orden in ordenes:
+                # Actualizar compra_id en la orden de compra
+                orden.compra_id = registro.compra_id
+
+                # Crear detalle en registro_compra_ordenes (tabla histórica)
+                # Normalizar moneda a formato corto
+                moneda_corta = 'USD' if orden.moneda and orden.moneda.upper() in ('USD', 'DOLARES') else 'PEN'
+
                 orden_detalle = RegistroCompraOrdenModel(
                     compra_id=registro.compra_id,
-                    id_orden_compra=orden.id_orden,
                     fecha_orden_compra=orden.fecha_creacion,
-                    moneda=orden.moneda,
-                    monto_total=orden.total
+                    moneda=moneda_corta,
+                    monto_total=orden.total if orden.total else 0
                 )
                 self.db.add(orden_detalle)
 
@@ -143,19 +177,31 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
     def eliminar_orden_de_registro(self, compra_id: int, id_orden: int):
         """
         Elimina una orden específica de un registro de compra
+        (actualiza compra_id a NULL en la orden y elimina de registro_compra_ordenes)
 
         Args:
             compra_id: ID del registro de compra
             id_orden: ID de la orden a eliminar
         """
         try:
-            self.db.query(RegistroCompraOrdenModel).filter(
-                RegistroCompraOrdenModel.compra_id == compra_id,
-                RegistroCompraOrdenModel.id_orden_compra == id_orden
-            ).delete()
+            # Actualizar compra_id a NULL en la orden
+            orden = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == id_orden,
+                OrdenesCompraModel.compra_id == compra_id
+            ).first()
 
-            self.db.commit()
-            logger.info(f"Orden {id_orden} eliminada del registro {compra_id}")
+            if orden:
+                # Desvincular orden
+                orden.compra_id = None
+
+                # Eliminar detalles de registro_compra_ordenes
+                # (Nota: No hay FK directa a id_orden, se eliminan todos del compra_id
+                # y se recalculan en la siguiente actualización)
+
+                self.db.commit()
+                logger.info(f"Orden {id_orden} desvinculada del registro {compra_id}")
+            else:
+                logger.warning(f"Orden {id_orden} no encontrada en registro {compra_id}")
 
         except Exception as e:
             self.db.rollback()
@@ -170,7 +216,12 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             compra_id: ID del registro de compra
         """
         try:
-            # Primero eliminar órdenes (por si no hay CASCADE)
+            # Primero desvincular todas las órdenes asociadas
+            self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.compra_id == compra_id
+            ).update({'compra_id': None})
+
+            # Eliminar detalles de registro_compra_ordenes (por CASCADE o manualmente)
             self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.compra_id == compra_id
             ).delete()

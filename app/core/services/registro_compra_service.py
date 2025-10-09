@@ -40,6 +40,7 @@ class RegistroCompraService:
 
         Returns:
             dict: {
+                'moneda': str,
                 'monto_total_dolar': Decimal,
                 'tipo_cambio_sunat': Decimal,
                 'monto_total_soles': Decimal,
@@ -59,9 +60,9 @@ class RegistroCompraService:
 
         logger.info(f"Calculando montos para {len(ordenes)} órdenes con TC={tipo_cambio_sunat}")
 
-        # Separar órdenes por moneda
-        ordenes_pen = [o for o in ordenes if o.moneda and o.moneda.upper() == 'PEN']
-        ordenes_usd = [o for o in ordenes if o.moneda and o.moneda.upper() == 'USD']
+        # Separar órdenes por moneda (normalizar nombres: DOLARES/USD y SOLES/PEN)
+        ordenes_pen = [o for o in ordenes if o.moneda and o.moneda.upper() in ('PEN', 'SOLES')]
+        ordenes_usd = [o for o in ordenes if o.moneda and o.moneda.upper() in ('USD', 'DOLARES')]
 
         logger.info(f"Órdenes en PEN: {len(ordenes_pen)}, Órdenes en USD: {len(ordenes_usd)}")
 
@@ -95,6 +96,19 @@ class RegistroCompraService:
         monto_total_soles = monto_total_soles.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
         monto_sin_igv = monto_sin_igv.quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
+        # Determinar tipo de moneda para identificar el origen de las órdenes
+        # MIX = órdenes mixtas (PEN + USD), USD = solo USD, PEN = solo PEN
+        # Aunque el resultado final siempre está en PEN, este campo indica el origen
+        if len(ordenes_pen) > 0 and len(ordenes_usd) > 0:
+            moneda = 'MIX'  # Mixto: órdenes en PEN y USD
+        elif len(ordenes_usd) > 0:
+            moneda = 'USD'  # Solo órdenes en USD
+        elif len(ordenes_pen) > 0:
+            moneda = 'PEN'  # Solo órdenes en PEN
+        else:
+            # Fallback: si no se puede determinar, usar PEN por defecto
+            moneda = 'PEN'
+
         # Determinar tipo de empresa (de la primera orden)
         tipo_empresa = 'CONSORCIO' if ordenes[0].consorcio else 'CORPELIMA'
 
@@ -102,6 +116,7 @@ class RegistroCompraService:
         fecha_orden_compra = ordenes[0].fecha_creacion
 
         resultado = {
+            'moneda': moneda,
             'monto_total_dolar': monto_total_dolar,
             'tipo_cambio_sunat': tipo_cambio_sunat,
             'monto_total_soles': monto_total_soles,
@@ -110,6 +125,6 @@ class RegistroCompraService:
             'tipo_empresa': tipo_empresa
         }
 
-        logger.info(f"✅ Cálculo completado: Soles={monto_total_soles}, Sin IGV={monto_sin_igv}")
+        logger.info(f"✅ Cálculo completado: Moneda={moneda}, Soles={monto_total_soles}, Sin IGV={monto_sin_igv}")
 
         return resultado

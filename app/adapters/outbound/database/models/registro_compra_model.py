@@ -14,11 +14,15 @@ class RegistroCompraModel(Base):
 
     compra_id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
 
-    # Relación con cotización
-    id_cotizacion = Column(BIGINT, ForeignKey("cotizacion.id_cotizacion"), nullable=False, index=True)
-
     # Fecha de la orden de compra
     fecha_orden_compra = Column(Date, nullable=False, comment="Fecha de la primera orden de compra")
+
+    # Moneda
+    moneda = Column(
+        String(10),
+        nullable=True,
+        comment="Moneda predominante: SOLES, DOLARES, o MIXTO"
+    )
 
     # Montos consolidados
     monto_total_dolar = Column(
@@ -50,7 +54,15 @@ class RegistroCompraModel(Base):
     )
 
     # Relaciones
-    ordenes = relationship(
+    # Relación con órdenes de compra (directa desde ordenes_compra.compra_id)
+    ordenes_compra = relationship(
+        "OrdenesCompraModel",
+        foreign_keys="[OrdenesCompraModel.compra_id]",
+        back_populates="registro_compra"
+    )
+
+    # Relación con detalles de órdenes (tabla intermedia/histórico)
+    registro_compra_ordenes = relationship(
         "RegistroCompraOrdenModel",
         back_populates="registro_compra",
         cascade="all, delete-orphan"

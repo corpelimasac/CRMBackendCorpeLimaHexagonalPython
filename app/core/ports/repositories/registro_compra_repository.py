@@ -10,12 +10,13 @@ class RegistroCompraRepositoryPort(ABC):
     """
 
     @abstractmethod
-    def obtener_por_cotizacion(self, id_cotizacion: int) -> Optional[RegistroCompraModel]:
+    def obtener_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> Optional[RegistroCompraModel]:
         """
-        Obtiene el registro de compra asociado a una cotización
+        Obtiene el registro de compra asociado a una cotización y versión
 
         Args:
             id_cotizacion: ID de la cotización
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional)
 
         Returns:
             RegistroCompraModel: Registro encontrado o None
@@ -23,12 +24,13 @@ class RegistroCompraRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int) -> List[OrdenesCompraModel]:
+    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> List[OrdenesCompraModel]:
         """
-        Obtiene todas las órdenes de compra de una cotización
+        Obtiene todas las órdenes de compra de una cotización y versión específica
 
         Args:
             id_cotizacion: ID de la cotización
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional)
 
         Returns:
             List[OrdenesCompraModel]: Lista de órdenes de compra
@@ -36,7 +38,7 @@ class RegistroCompraRepositoryPort(ABC):
         pass
 
     @abstractmethod
-    def guardar_o_actualizar(self, id_cotizacion: int, ordenes: List[OrdenesCompraModel], datos_calculados: dict) -> RegistroCompraModel:
+    def guardar_o_actualizar(self, id_cotizacion: int, ordenes: List[OrdenesCompraModel], datos_calculados: dict, id_cotizacion_versiones: int = None) -> RegistroCompraModel:
         """
         Guarda o actualiza un registro de compra con sus órdenes
 
@@ -44,6 +46,7 @@ class RegistroCompraRepositoryPort(ABC):
             id_cotizacion: ID de la cotización
             ordenes: Lista de órdenes de compra
             datos_calculados: Diccionario con montos calculados
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional)
 
         Returns:
             RegistroCompraModel: Registro guardado/actualizado

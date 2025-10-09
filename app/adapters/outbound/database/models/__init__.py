@@ -6,6 +6,12 @@ from .base import Base
 # Modelos principales
 from .usuarios_model import UsuariosModel
 from .cotizacion_model import CotizacionModel
+
+# Modelos de registro de compras (antes de ordenes_compra por FK)
+from .registro_compra_model import RegistroCompraModel
+from .registro_compra_orden_model import RegistroCompraOrdenModel
+from .tasa_cambio_sunat_model import TasaCambioSunatModel
+
 from .ordenes_compra_model import OrdenesCompraModel
 
 
@@ -39,7 +45,10 @@ from .porcentaje_utilidad_model import PorcentajeUtilidadModel
 __all__ = [
     "Base",
     "UsuariosModel",
-    "CotizacionModel", 
+    "CotizacionModel",
+    "RegistroCompraModel",
+    "RegistroCompraOrdenModel",
+    "TasaCambioSunatModel",
     "OrdenesCompraModel",
     "ProveedoresModel",
     "ProveedorContactosModel",

@@ -39,3 +39,9 @@ class OrdenesCompraModel(Base):
 
   # Relación de uno a uno con la tabla de proveedores contactos
   id_proveedor_contacto = Column(BIGINT, ForeignKey("proveedor_contactos.id_proveedor_contacto"), nullable=False)
+
+  # Relación con registro de compras
+  compra_id = Column(BIGINT, ForeignKey("registro_compras.compra_id"), nullable=True, index=True)
+
+  # Relación inversa con registro de compras
+  registro_compra = relationship("RegistroCompraModel", back_populates="ordenes_compra")

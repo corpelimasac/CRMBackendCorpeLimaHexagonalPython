@@ -48,9 +48,30 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         self.event_dispatcher = get_event_dispatcher()
 
     def save(self, order: OrdenesCompra) -> OrdenesCompra:
-        try:
-            # 1. Obtener el último correlativo
+        """
+        DEPRECADO: Usar save_batch() en su lugar.
+        Este método guarda una sola orden y dispara un evento por cada orden.
+        Para evitar múltiples eventos, usar save_batch() que procesa todas las órdenes en una transacción.
+        """
+        logger.warning("⚠️ Método save() está deprecado. Usar save_batch() en su lugar.")
+        return self.save_batch([order])[0]
 
+    def save_batch(self, orders: List[OrdenesCompra]) -> List[OrdenesCompra]:
+        """
+        Guarda múltiples órdenes de compra en una sola transacción
+        y dispara el evento UNA SOLA VEZ al final
+        
+        Args:
+            orders: Lista de órdenes de compra a guardar
+            
+        Returns:
+            Lista de órdenes guardadas
+        """
+        try:
+            if not orders:
+                return []
+            
+            # Obtener el último correlativo
             last_correlative = (
                 self.db.query(OrdenesCompraModel)
                 .order_by(OrdenesCompraModel.id_orden.desc())
@@ -58,78 +79,79 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             )
             if last_correlative:
                 last_number = int(last_correlative.correlative.split("-")[1])
-                new_number = last_number + 1
             else:
-                new_number = 1
+                last_number = 0
 
             current_year = datetime.now().year
-            # 2. Generar el correlativo
-            new_correlative = f"OC-{new_number:06d}-{current_year}"
-            print(f"Este es el correlativo: {new_correlative}")
+            saved_orders = []
+            
+            # Guardar todas las órdenes sin commit
+            for idx, order in enumerate(orders):
+                new_number = last_number + idx + 1
+                new_correlative = f"OC-{new_number:06d}-{current_year}"
+                print(f"Este es el correlativo: {new_correlative}")
 
-            # Calcular total de la orden
-            total_orden = sum(item.p_total for item in order.items)
+                # Calcular total de la orden
+                total_orden = sum(item.p_total for item in order.items)
 
-            db_order = OrdenesCompraModel(
-                id_cotizacion=order.id_cotizacion,
-                id_proveedor=order.id_proveedor,
-                id_proveedor_contacto=order.id_proveedor_contacto,
-                moneda=order.moneda,
-                pago=order.pago,
-                entrega=order.entrega,
-                id_cotizacion_versiones=order.id_cotizacion_versiones,
-                fecha_creacion=datetime.now(),
-                correlative=new_correlative,
-                id_usuario=order.id_usuario,
-                consorcio=order.consorcio,
-                total=str(total_orden)  # Guardar total calculado
-            )
-
-            # --- 2. Insertar la Orden Principal ---
-            self.db.add(db_order)
-            # Hacemos un "flush" para que la base de datos asigne el ID autoincremental
-            # sin hacer un commit completo de la transacción.
-            self.db.flush()
-
-            # --- 3. Mapeo e Inserción de los Detalles ---
-            for item in order.items:
-                db_detail = OrdenesCompraDetallesModel(
-                    id_orden=db_order.id_orden,  # <-- Usamos el ID recién generado
-                    id_producto=item.id_producto,
-                    cantidad=item.cantidad,
-                    precio_unitario=item.p_unitario,
-                    precio_total=item.p_total,
+                db_order = OrdenesCompraModel(
+                    id_cotizacion=order.id_cotizacion,
+                    id_proveedor=order.id_proveedor,
+                    id_proveedor_contacto=order.id_proveedor_contacto,
+                    moneda=order.moneda,
+                    pago=order.pago,
+                    entrega=order.entrega,
+                    id_cotizacion_versiones=order.id_cotizacion_versiones,
+                    fecha_creacion=datetime.now(),
+                    correlative=new_correlative,
+                    id_usuario=order.id_usuario,
+                    consorcio=order.consorcio,
+                    total=str(total_orden)
                 )
-                self.db.add(db_detail)
 
-            # --- 4. Publicar evento (se ejecutará DESPUÉS del commit) ---
+                self.db.add(db_order)
+                self.db.flush()  # Obtener ID sin commit
+
+                # Insertar detalles
+                for item in order.items:
+                    db_detail = OrdenesCompraDetallesModel(
+                        id_orden=db_order.id_orden,
+                        id_producto=item.id_producto,
+                        cantidad=item.cantidad,
+                        precio_unitario=item.p_unitario,
+                        precio_total=item.p_total,
+                    )
+                    self.db.add(db_detail)
+                
+                saved_orders.append(order)
+                print(f"Orden {db_order.id_orden} preparada para guardado en batch")
+
+            # Publicar UN SOLO EVENTO para todas las órdenes
+            # Usamos los datos de la primera orden para el evento (todas son de la misma cotización/versión)
+            first_order = orders[0]
             self.event_dispatcher.publish(
                 session=self.db,
                 event_data={
                     'tipo_evento': 'ORDEN_COMPRA_CREADA',
-                    'id_orden': db_order.id_orden,
-                    'id_cotizacion': db_order.id_cotizacion,
-                    'moneda': db_order.moneda,
-                    'total': float(total_orden),
-                    'fecha_creacion': db_order.fecha_creacion.isoformat(),
-                    'consorcio': db_order.consorcio if db_order.consorcio else False
+                    'id_cotizacion': first_order.id_cotizacion,
+                    'id_cotizacion_versiones': first_order.id_cotizacion_versiones,
+                    'cantidad_ordenes': len(orders),
+                    'consorcio': first_order.consorcio if first_order.consorcio else False
                 },
                 handler=self._handle_orden_compra_evento
             )
 
-            # --- 5. Confirmar la Transacción ---
-            # El evento se ejecutará SOLO si este commit es exitoso
+            # Commit de todas las órdenes de una sola vez
             self.db.commit()
 
-            logger.info(f"✅ Orden {db_order.id_orden} guardada - Evento será procesado en background")
+            logger.info(f"✅ {len(orders)} órdenes guardadas en batch - Evento será procesado en background")
 
-            return order
+            return saved_orders
 
         except Exception as e:
-            # Si algo falla, revertimos todos los cambios de esta transacción
             self.db.rollback()
-            print(f"Error al guardar la orden de compra: {e}")
-            raise e  # Vuelve a lanzar la excepción para que el caso de uso la maneje
+            print(f"Error al guardar órdenes en batch: {e}")
+            raise e
 
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
         """

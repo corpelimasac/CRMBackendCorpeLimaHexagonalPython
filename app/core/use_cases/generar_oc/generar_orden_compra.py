@@ -88,8 +88,10 @@ class GenerarOrdenCompra:
     
         print("Version de cotización existe")
 
-        # 1. Guardar todas las órdenes de compra en la base de datos
-        print("Guardando órdenes de compra en la base de datos...")
+        # 1. Preparar todas las órdenes de compra
+        print("Preparando órdenes de compra...")
+        ordenes_a_guardar = []
+        
         for order_data in request.data:
             # Mapear los productos del DTO a la entidad OrdenesCompraItem
             items_entidad = [
@@ -115,10 +117,13 @@ class GenerarOrdenCompra:
                 items=items_entidad,
                 consorcio=request.consorcio
             )
+            
+            ordenes_a_guardar.append(ordenes_compra_entity)
 
-            # Guardar en la base de datos
-            self.ordenes_compra_repo.save(ordenes_compra_entity)
-            print(f"Orden de compra guardada para proveedor contacto {order_data.proveedorInfo.idProveedorContacto}")
+        # Guardar TODAS las órdenes en una sola transacción con UN SOLO EVENTO
+        print(f"Guardando {len(ordenes_a_guardar)} órdenes de compra en batch...")
+        self.ordenes_compra_repo.save_batch(ordenes_a_guardar)
+        print(f"✅ {len(ordenes_a_guardar)} órdenes guardadas exitosamente")
 
         # 2. Crear GenerarOCRequest con todos los contactos
         lista_ids_contacto = list(set([

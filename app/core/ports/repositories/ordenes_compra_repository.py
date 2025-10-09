@@ -10,6 +10,11 @@ class OrdenesCompraRepositoryPort(ABC):
     pass
 
   @abstractmethod
+  def save_batch(self, orders: List[OrdenesCompra]) -> List[OrdenesCompra]:
+    """Guarda múltiples órdenes de compra en una sola transacción."""
+    pass
+
+  @abstractmethod
   def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
     """Obtiene información de productos para generar orden de compra."""
     pass
