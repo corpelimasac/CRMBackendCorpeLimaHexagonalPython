@@ -58,7 +58,6 @@ def _process_and_generate_oc(
             'version': request.id_version,
             'ruta_s3': None,  # Se actualizará después de subir a S3
             'moneda': resultados_contacto[0].MONEDA,
-            'igv': resultados_contacto[0].IGV,
             'total': resultados_contacto[0].TOTAL,
             'id_proveedor': resultados_contacto[0].IDPROVEEDOR,
         })

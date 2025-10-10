@@ -30,20 +30,23 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             RegistroCompraModel: Registro encontrado o None
         """
         try:
-            # Obtener registro via join con ordenes_compra
+            # Obtener registro via join con registro_compra_ordenes -> ordenes_compra
             query = self.db.query(RegistroCompraModel).join(
+                RegistroCompraOrdenModel,
+                RegistroCompraModel.compra_id == RegistroCompraOrdenModel.compra_id
+            ).join(
                 OrdenesCompraModel,
-                RegistroCompraModel.compra_id == OrdenesCompraModel.compra_id
+                RegistroCompraOrdenModel.id_orden == OrdenesCompraModel.id_orden
             ).filter(
                 OrdenesCompraModel.id_cotizacion == id_cotizacion
             )
-            
+
             # Filtrar por versión si se proporciona
             if id_cotizacion_versiones is not None:
                 query = query.filter(
                     OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
                 )
-            
+
             registro = query.first()
 
             if registro:
@@ -147,17 +150,15 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 self.db.add(registro)
                 self.db.flush()  # Obtener ID
 
-            # Actualizar compra_id en ordenes_compra y crear detalles en registro_compra_ordenes
+            # Crear detalles en registro_compra_ordenes con relación a las órdenes
             for orden in ordenes:
-                # Actualizar compra_id en la orden de compra
-                orden.compra_id = registro.compra_id
-
-                # Crear detalle en registro_compra_ordenes (tabla histórica)
+                # Crear detalle en registro_compra_ordenes con FK a orden de compra
                 # Normalizar moneda a formato corto
                 moneda_corta = 'USD' if orden.moneda and orden.moneda.upper() in ('USD', 'DOLARES') else 'PEN'
 
                 orden_detalle = RegistroCompraOrdenModel(
                     compra_id=registro.compra_id,
+                    id_orden=orden.id_orden,  # FK a orden de compra (One-to-One)
                     fecha_orden_compra=orden.fecha_creacion,
                     moneda=moneda_corta,
                     monto_total=orden.total if orden.total else 0
@@ -177,29 +178,23 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
     def eliminar_orden_de_registro(self, compra_id: int, id_orden: int):
         """
         Elimina una orden específica de un registro de compra
-        (actualiza compra_id a NULL en la orden y elimina de registro_compra_ordenes)
+        (elimina el registro en registro_compra_ordenes)
 
         Args:
             compra_id: ID del registro de compra
             id_orden: ID de la orden a eliminar
         """
         try:
-            # Actualizar compra_id a NULL en la orden
-            orden = self.db.query(OrdenesCompraModel).filter(
-                OrdenesCompraModel.id_orden == id_orden,
-                OrdenesCompraModel.compra_id == compra_id
+            # Eliminar registro de registro_compra_ordenes
+            orden_detalle = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.compra_id == compra_id,
+                RegistroCompraOrdenModel.id_orden == id_orden
             ).first()
 
-            if orden:
-                # Desvincular orden
-                orden.compra_id = None
-
-                # Eliminar detalles de registro_compra_ordenes
-                # (Nota: No hay FK directa a id_orden, se eliminan todos del compra_id
-                # y se recalculan en la siguiente actualización)
-
+            if orden_detalle:
+                self.db.delete(orden_detalle)
                 self.db.commit()
-                logger.info(f"Orden {id_orden} desvinculada del registro {compra_id}")
+                logger.info(f"Orden {id_orden} eliminada del registro {compra_id}")
             else:
                 logger.warning(f"Orden {id_orden} no encontrada en registro {compra_id}")
 
@@ -216,17 +211,12 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             compra_id: ID del registro de compra
         """
         try:
-            # Primero desvincular todas las órdenes asociadas
-            self.db.query(OrdenesCompraModel).filter(
-                OrdenesCompraModel.compra_id == compra_id
-            ).update({'compra_id': None})
-
-            # Eliminar detalles de registro_compra_ordenes (por CASCADE o manualmente)
+            # Eliminar detalles de registro_compra_ordenes (CASCADE se encargará si está configurado)
             self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.compra_id == compra_id
             ).delete()
 
-            # Luego eliminar registro
+            # Eliminar registro principal
             self.db.query(RegistroCompraModel).filter(
                 RegistroCompraModel.compra_id == compra_id
             ).delete()

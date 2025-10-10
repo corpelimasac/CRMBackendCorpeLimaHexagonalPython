@@ -14,7 +14,7 @@ class RegistroCompraOrdenModel(Base):
 
     orden_id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
 
-    # Relación con registro de compra
+    # Relación con registro de compra (Many-to-One)
     compra_id = Column(
         BIGINT,
         ForeignKey("registro_compras.compra_id", ondelete="CASCADE"),
@@ -22,13 +22,28 @@ class RegistroCompraOrdenModel(Base):
         index=True
     )
 
-    # Datos de la orden (NO usa FK a ordenes_compra para mantener histórico)
+    # Relación One-to-One con orden de compra
+    id_orden = Column(
+        Integer,
+        ForeignKey("ordenes_compra.id_orden", ondelete="CASCADE"),
+        nullable=False,
+        unique=True,
+        index=True
+    )
+
+    # Datos de la orden
     fecha_orden_compra = Column(Date, nullable=False, comment="Fecha de esta orden de compra")
     moneda = Column(String(3), nullable=False, comment="PEN o USD")
     monto_total = Column(Numeric(12, 2), nullable=False, comment="Monto total de esta orden")
 
-    # Relación bidireccional con registro de compras
+    # Relación Many-to-One con registro de compras
     registro_compra = relationship(
         "RegistroCompraModel",
         back_populates="registro_compra_ordenes"
+    )
+
+    # Relación One-to-One con orden de compra
+    orden_compra = relationship(
+        "OrdenesCompraModel",
+        back_populates="registro_compra_orden"
     )

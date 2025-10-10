@@ -54,14 +54,7 @@ class RegistroCompraModel(Base):
     )
 
     # Relaciones
-    # Relación con órdenes de compra (directa desde ordenes_compra.compra_id)
-    ordenes_compra = relationship(
-        "OrdenesCompraModel",
-        foreign_keys="[OrdenesCompraModel.compra_id]",
-        back_populates="registro_compra"
-    )
-
-    # Relación con detalles de órdenes (tabla intermedia/histórico)
+    # Relación One-to-Many con registro_compra_ordenes
     registro_compra_ordenes = relationship(
         "RegistroCompraOrdenModel",
         back_populates="registro_compra",

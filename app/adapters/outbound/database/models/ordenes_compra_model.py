@@ -16,7 +16,6 @@ class OrdenesCompraModel(Base):
   ruta_s3 = Column(String(250), nullable=True)
   
   moneda=Column(String(255), nullable=True)
-  igv=Column(String(255), nullable=True)
   total=Column(String(255), nullable=True)
   pago=Column(String(255), nullable=True)
   entrega=Column(String(255), nullable=True)
@@ -40,8 +39,9 @@ class OrdenesCompraModel(Base):
   # Relación de uno a uno con la tabla de proveedores contactos
   id_proveedor_contacto = Column(BIGINT, ForeignKey("proveedor_contactos.id_proveedor_contacto"), nullable=False)
 
-  # Relación con registro de compras
-  compra_id = Column(BIGINT, ForeignKey("registro_compras.compra_id"), nullable=True, index=True)
-
-  # Relación inversa con registro de compras
-  registro_compra = relationship("RegistroCompraModel", back_populates="ordenes_compra")
+  # Relación one-to-one con registro_compra_ordenes (la FK está en la otra tabla)
+  registro_compra_orden = relationship(
+      "RegistroCompraOrdenModel",
+      back_populates="orden_compra",
+      uselist=False
+  )
