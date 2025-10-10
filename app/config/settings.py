@@ -2,11 +2,12 @@
 Configuración de la aplicación usando Pydantic Settings
 """
 from functools import lru_cache
-from pydantic_settings import BaseSettings
-from pydantic import Field
-from typing import Optional, Literal
+from typing import Literal
+
 from dotenv import load_dotenv
-import os
+from pydantic import Field
+from pydantic_settings import BaseSettings
+
 
 class Settings(BaseSettings):
     """

@@ -1,9 +1,3 @@
-from typing import Dict, Optional
-
-import threading
-from queue import Queue
-from datetime import datetime, timedelta
-import atexit
 import pandas as pd
 import pickle
 import os
@@ -15,7 +9,13 @@ from playwright.sync_api import sync_playwright, Page
 # Obtener el directorio donde está ubicado este archivo
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 NOMBRE_CSV = os.path.join(SCRIPT_DIR, 'ubigeo_distritos.csv')
-NOMBRE_PICKLE = os.path.join(SCRIPT_DIR, 'ubigeo_map.pkl') 
+NOMBRE_PICKLE = os.path.join(SCRIPT_DIR, 'ubigeo_map.pkl')
+
+
+def get_archivo_pickle():
+    # Implementación mínima para satisfacer tu esqueleto original
+    return NOMBRE_PICKLE
+
 
 class UbigeoMap:
     """
@@ -108,9 +108,43 @@ class UbigeoMap:
         
         return str(ubigeo).strip() if ubigeo else "Sin ubigeo"
 
-    def get_archivo_pickle(self):
-        # Implementación mínima para satisfacer tu esqueleto original
-        return NOMBRE_PICKLE
+
+def _extraer_trabajadores(page: Page, dto: DatosRucDTO) -> None:
+  """Extrae información de trabajadores y prestadores de servicios"""
+  try:
+    boton_trabajadores_loc = page.locator('.btnInfNumTra')
+
+    if boton_trabajadores_loc.is_visible():
+        boton_trabajadores_loc.click()
+        page.wait_for_load_state('networkidle')
+
+        if page.locator('table.table').is_visible():
+            ultima_fila = page.locator('table.table tbody tr').last
+            dto.numero_trabajadores = ultima_fila.locator('td').nth(1).text_content()
+            dto.prestadores_de_servicios = ultima_fila.locator('td').nth(3).text_content()
+            page.click('.btnNuevaConsulta')
+            page.wait_for_load_state('networkidle')
+  except Exception as e:
+    print(f"Error al extraer trabajadores: {e}")
+
+
+def _extraer_rubros(page: Page, dto: DatosRucDTO) -> None:
+  """Extrae actividades económicas y las asigna al DTO"""
+  try:
+    tabla_rubros = page.locator('.tblResultado').nth(0)
+    filas_en_tabla = tabla_rubros.locator('tr')
+    numero_filas = filas_en_tabla.count()
+
+    if numero_filas >= 1:
+        dto.actividad_economica = filas_en_tabla.nth(0).text_content().strip()
+
+    if numero_filas >= 2:
+        dto.actividad_economica2 = filas_en_tabla.nth(1).text_content().strip()
+    else:
+        print("Solo se encontró una actividad económica.")
+  except Exception as e:
+    print(f"Error al extraer rubros: {e}")
+
 
 class SunatScrapper:
   """
@@ -174,7 +208,7 @@ class SunatScrapper:
 
         # Extraer datos y poblar DTO
         self._extraer_datos_basicos(page, dto)
-        self._extraer_trabajadores(page, dto)
+        _extraer_trabajadores(page, dto)
         self._extraer_representantes_legales(page, dto)
 
         context.close()
@@ -226,7 +260,7 @@ class SunatScrapper:
       dto.ubigeo = self.ubigeo_map.obtener_ubigeo(dto.distrito)
 
       # Extraer rubros
-      self._extraer_rubros(page, dto)
+      _extraer_rubros(page, dto)
 
       # Verificar agente de retención
       tabla_agente = page.locator('.tblResultado').nth(3)
@@ -237,44 +271,8 @@ class SunatScrapper:
       print(f"Error al extraer datos básicos: {e}")
       dto.error = str(e)
 
-  def _extraer_rubros(self, page: Page, dto: DatosRucDTO) -> None:
-    """Extrae actividades económicas y las asigna al DTO"""
-    try:
-      tabla_rubros = page.locator('.tblResultado').nth(0)
-      filas_en_tabla = tabla_rubros.locator('tr')
-      numero_filas = filas_en_tabla.count()
-
-      if numero_filas >= 1:
-          dto.actividad_economica = filas_en_tabla.nth(0).text_content().strip()
-
-      if numero_filas >= 2:
-          dto.actividad_economica2 = filas_en_tabla.nth(1).text_content().strip()
-      else:
-          print("Solo se encontró una actividad económica.")
-    except Exception as e:
-      print(f"Error al extraer rubros: {e}")
-
-  
-  def _extraer_trabajadores(self, page: Page, dto: DatosRucDTO) -> None:
-    """Extrae información de trabajadores y prestadores de servicios"""
-    try:
-      boton_trabajadores_loc = page.locator('.btnInfNumTra')
-
-      if boton_trabajadores_loc.is_visible():
-          boton_trabajadores_loc.click()
-          page.wait_for_load_state('networkidle')
-
-          if page.locator('table.table').is_visible():
-              ultima_fila = page.locator('table.table tbody tr').last
-              dto.numero_trabajadores = ultima_fila.locator('td').nth(1).text_content()
-              dto.prestadores_de_servicios = ultima_fila.locator('td').nth(3).text_content()
-              page.click('.btnNuevaConsulta')
-              page.wait_for_load_state('networkidle')
-    except Exception as e:
-      print(f"Error al extraer trabajadores: {e}")
-
-
-  def _extraer_representantes_legales(self, page: Page, dto: DatosRucDTO) -> None:
+  @staticmethod
+  def _extraer_representantes_legales(page: Page, dto: DatosRucDTO) -> None:
     """Extrae información del representante legal"""
     try:
       boton_representantes_loc = page.locator('.btnInfRepLeg')

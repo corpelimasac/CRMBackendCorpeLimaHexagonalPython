@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, Date, Numeric, String, ForeignKey, BIGINT
+from sqlalchemy import Column, Date, Numeric, String, BIGINT
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -14,8 +14,8 @@ class RegistroCompraModel(Base):
 
     compra_id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
 
-    # Fecha de la orden de compra
-    fecha_orden_compra = Column(Date, nullable=False, comment="Fecha de la primera orden de compra")
+    # Fecha de la orden de compra (fecha actual cuando se genera el registro)
+    fecha_orden_compra = Column(Date, nullable=False, comment="Fecha cuando se generó el registro de compra")
 
     # Moneda
     moneda = Column(

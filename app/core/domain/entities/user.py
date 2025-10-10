@@ -2,7 +2,7 @@
 Entidad User del dominio
 """
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from dataclasses import dataclass
 from app.core.domain.value_objects.email import Email
 
@@ -17,7 +17,7 @@ class User:
     """
     id: Optional[int]
     name: str
-    email: Email
+    email: Union[Email, str]
     phone: Optional[str]
     is_active: bool
     created_at: Optional[datetime]
@@ -30,7 +30,7 @@ class User:
         if not self.name or len(self.name.strip()) < 2:
             raise ValueError("El nombre debe tener al menos 2 caracteres")
         
-        if not isinstance(self.email, Email):
+        if isinstance(self.email, str):
             self.email = Email(self.email)
     
     def activate(self) -> None:
@@ -38,14 +38,14 @@ class User:
         Activar el usuario
         """
         self.is_active = True
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def deactivate(self) -> None:
         """
         Desactivar el usuario
         """
         self.is_active = False
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def update_profile(self, name: Optional[str] = None, phone: Optional[str] = None) -> None:
         """
@@ -57,7 +57,7 @@ class User:
         if phone is not None:
             self.phone = phone
         
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def can_place_order(self) -> bool:
         """

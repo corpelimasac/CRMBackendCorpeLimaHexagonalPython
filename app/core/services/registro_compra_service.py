@@ -3,6 +3,7 @@ Servicio de cálculo de montos consolidados para registro de compras
 """
 from typing import List
 from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 import logging
 
@@ -109,11 +110,15 @@ class RegistroCompraService:
             # Fallback: si no se puede determinar, usar PEN por defecto
             moneda = 'PEN'
 
-        # Determinar tipo de empresa (de la primera orden)
-        tipo_empresa = 'CONSORCIO' if ordenes[0].consorcio else 'CORPELIMA'
+        # Determinar tipo de empresa basado en el campo 'consorcio' de las órdenes
+        # Si al menos una orden es de consorcio, todo el registro es CONSORCIO
+        tiene_consorcio = any(orden.consorcio for orden in ordenes)
+        tipo_empresa = 'CONSORCIO' if tiene_consorcio else 'CORPELIMA'
+        
+        logger.info(f"Tipo de empresa determinado: {tipo_empresa} (consorcio={tiene_consorcio})")
 
-        # Fecha de la primera orden
-        fecha_orden_compra = ordenes[0].fecha_creacion
+        # Fecha del registro (fecha actual cuando se genera el registro)
+        fecha_orden_compra = date.today()
 
         resultado = {
             'moneda': moneda,

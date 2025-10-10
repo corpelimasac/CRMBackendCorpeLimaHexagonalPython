@@ -47,7 +47,7 @@ class Product:
             raise ValueError("Stock insuficiente")
         
         self.stock = new_stock
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def update_price(self, new_price: Decimal) -> None:
         """
@@ -57,21 +57,21 @@ class Product:
             raise ValueError("El precio debe ser mayor que cero")
         
         self.price = new_price
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def activate(self) -> None:
         """
         Activar el producto
         """
         self.is_active = True
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def deactivate(self) -> None:
         """
         Desactivar el producto
         """
         self.is_active = False
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def is_available(self) -> bool:
         """

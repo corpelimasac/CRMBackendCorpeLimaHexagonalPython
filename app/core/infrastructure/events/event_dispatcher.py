@@ -11,6 +11,33 @@ import logging
 logger = logging.getLogger(__name__)
 
 
+def _execute_handler(event_data: dict, handler: Callable):
+    """
+    Ejecuta el handler en un thread separado
+
+    El handler debe crear su propia sesión DB para tener una transacción independiente
+    Equivalente a @Transactional(propagation = REQUIRES_NEW)
+
+    Args:
+        event_data: Datos del evento
+        handler: Función handler a ejecutar
+    """
+    try:
+        logger.info(f"🔄 Ejecutando handler asíncrono: {event_data.get('tipo_evento', 'UNKNOWN')}")
+
+        # El handler es responsable de crear su propia sesión DB
+        handler(event_data)
+
+        logger.info(f"✅ Handler completado exitosamente: {event_data.get('tipo_evento', 'UNKNOWN')}")
+
+    except Exception as e:
+        logger.error(
+            f"❌ Error en handler asíncrono: {e} | Evento: {event_data}",
+            exc_info=True
+        )
+        # No propagar error - no debe afectar la transacción original (ya commiteada)
+
+
 class EventDispatcher:
     """
     Despachador de eventos que se ejecutan DESPUÉS del commit exitoso
@@ -102,36 +129,10 @@ class EventDispatcher:
 
         for event_data, handler in events:
             # Ejecutar en thread pool (asíncrono, no bloquea)
-            self.executor.submit(self._execute_handler, event_data, handler)
+            self.executor.submit(_execute_handler, event_data, handler)
 
         # Limpiar eventos procesados
         self._clear_pending_events(session_id)
-
-    def _execute_handler(self, event_data: dict, handler: Callable):
-        """
-        Ejecuta el handler en un thread separado
-
-        El handler debe crear su propia sesión DB para tener una transacción independiente
-        Equivalente a @Transactional(propagation = REQUIRES_NEW)
-
-        Args:
-            event_data: Datos del evento
-            handler: Función handler a ejecutar
-        """
-        try:
-            logger.info(f"🔄 Ejecutando handler asíncrono: {event_data.get('tipo_evento', 'UNKNOWN')}")
-
-            # El handler es responsable de crear su propia sesión DB
-            handler(event_data)
-
-            logger.info(f"✅ Handler completado exitosamente: {event_data.get('tipo_evento', 'UNKNOWN')}")
-
-        except Exception as e:
-            logger.error(
-                f"❌ Error en handler asíncrono: {e} | Evento: {event_data}",
-                exc_info=True
-            )
-            # No propagar error - no debe afectar la transacción original (ya commiteada)
 
     def _clear_pending_events(self, session_id: int):
         """
@@ -143,13 +144,13 @@ class EventDispatcher:
         if session_id in self._pending_events:
             del self._pending_events[session_id]
 
-    def shutdown(self, wait: bool = True, timeout: int = 300):
+    def shutdown(self, wait: bool = True):
         """
         Apaga el thread pool esperando a que terminen las tareas pendientes
 
         Args:
-            wait: Si True, espera a que terminen todas las tareas
-            timeout: Tiempo máximo de espera en segundos (no usado en Python < 3.9)
+            wait: Si True, espera a que terminen todas las tareas ,
+             Tiempo máximo de espera en segundos (no usado en Python < 3.9)
         """
         logger.info(f"🛑 Apagando EventDispatcher (wait={wait})")
         # ThreadPoolExecutor.shutdown() no acepta timeout hasta Python 3.9+

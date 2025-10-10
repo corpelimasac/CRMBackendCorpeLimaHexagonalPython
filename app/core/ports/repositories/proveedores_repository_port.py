@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from typing import List, Any
+from typing import List
 from app.core.domain.entities.proveedor_contacto import ProveedorContacto
 
 class ProveedoresRepositoryPort(ABC):

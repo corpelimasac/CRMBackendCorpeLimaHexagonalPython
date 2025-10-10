@@ -4,8 +4,9 @@ Entidad Order del dominio
 from datetime import datetime
 from typing import List, Optional
 from dataclasses import dataclass, field
-from decimal import Decimal
 from enum import Enum
+
+from _decimal import Decimal
 
 
 class OrderStatus(Enum):
@@ -65,10 +66,10 @@ class Order:
             raise ValueError("Una orden debe tener al menos un ítem")
         
         if self.created_at is None:
-            self.created_at = datetime.utcnow()
+            self.created_at = datetime.now()
         
         if self.updated_at is None:
-            self.updated_at = datetime.utcnow()
+            self.updated_at = datetime.now()
     
     def add_item(self, product_id: int, product_name: str, quantity: int, unit_price: Decimal) -> None:
         """
@@ -81,13 +82,13 @@ class Order:
         for item in self.items:
             if item.product_id == product_id:
                 item.quantity += quantity
-                self.updated_at = datetime.utcnow()
+                self.updated_at = datetime.now()
                 return
         
         # Agregar nuevo ítem
         new_item = OrderItem(product_id, product_name, quantity, unit_price)
         self.items.append(new_item)
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def remove_item(self, product_id: int) -> None:
         """
@@ -97,13 +98,13 @@ class Order:
             raise ValueError("No se pueden remover ítems de una orden que no está pendiente")
         
         self.items = [item for item in self.items if item.product_id != product_id]
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
         
         if not self.items:
             raise ValueError("Una orden debe tener al menos un ítem")
     
     @property
-    def total_amount(self) -> Decimal:
+    def total_amount(self) -> int:
         """Calcular el monto total de la orden"""
         return sum(item.subtotal for item in self.items)
     
@@ -120,7 +121,7 @@ class Order:
             raise ValueError("Solo se pueden confirmar órdenes pendientes")
         
         self.status = OrderStatus.CONFIRMED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def start_processing(self) -> None:
         """
@@ -130,7 +131,7 @@ class Order:
             raise ValueError("Solo se pueden procesar órdenes confirmadas")
         
         self.status = OrderStatus.PROCESSING
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def ship(self) -> None:
         """
@@ -140,8 +141,8 @@ class Order:
             raise ValueError("Solo se pueden enviar órdenes en procesamiento")
         
         self.status = OrderStatus.SHIPPED
-        self.shipped_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.shipped_at = datetime.now()
+        self.updated_at = datetime.now()
     
     def deliver(self) -> None:
         """
@@ -151,8 +152,8 @@ class Order:
             raise ValueError("Solo se pueden entregar órdenes enviadas")
         
         self.status = OrderStatus.DELIVERED
-        self.delivered_at = datetime.utcnow()
-        self.updated_at = datetime.utcnow()
+        self.delivered_at = datetime.now()
+        self.updated_at = datetime.now()
     
     def cancel(self) -> None:
         """
@@ -162,7 +163,7 @@ class Order:
             raise ValueError("No se puede cancelar una orden entregada o ya cancelada")
         
         self.status = OrderStatus.CANCELLED
-        self.updated_at = datetime.utcnow()
+        self.updated_at = datetime.now()
     
     def can_be_modified(self) -> bool:
         """

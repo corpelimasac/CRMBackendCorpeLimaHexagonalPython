@@ -1,44 +1,67 @@
-from app.core.ports.repositories.ordenes_compra_repository import (
-    OrdenesCompraRepositoryPort,
-)
-from app.core.domain.entities.ordenes_compra import OrdenesCompra
+import logging
+from datetime import datetime
+from typing import List, Any
+
+from sqlalchemy import case, func
 from sqlalchemy.orm import Session
-from app.adapters.outbound.database.models.ordenes_compra_model import (
-    OrdenesCompraModel,
-)
+
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
+from app.adapters.outbound.database.models.marcas_model import MarcasModel
 from app.adapters.outbound.database.models.ordenes_compra_detalles_model import (
     OrdenesCompraDetallesModel,
 )
-from datetime import datetime
-from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
-from typing import List, Any
-from sqlalchemy import case, func
-from app.adapters.outbound.database.models.cotizaciones_versiones_model import (
-    CotizacionesVersionesModel,
-)
-from app.adapters.outbound.database.models.productos_cotizaciones_model import (
-    ProductosCotizacionesModel,
-)
-from app.adapters.outbound.database.models.unidad_medida_model import UnidadMedidaModel
-from app.adapters.outbound.database.models.marcas_model import MarcasModel
-from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
-from app.adapters.outbound.database.models.proveedor_detalle_model import (
-    ProveedorDetalleModel,
-)
-from app.adapters.outbound.database.models.productos_model import ProductosModel
-from app.adapters.outbound.database.models.intermedia_proveedor_contacto_model import (
-    intermedia_proveedor_contacto,
-)
-from app.adapters.outbound.database.models.proveedor_contacto_model import (
-    ProveedorContactosModel,
-)
 from app.adapters.outbound.database.models.ordenes_compra_model import (
     OrdenesCompraModel,
 )
+from app.adapters.outbound.database.models.productos_model import ProductosModel
+from app.adapters.outbound.database.models.proveedor_contacto_model import (
+    ProveedorContactosModel,
+)
+from app.adapters.outbound.database.models.proveedor_detalle_model import (
+    ProveedorDetalleModel,
+)
+from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
+from app.adapters.outbound.database.models.unidad_medida_model import UnidadMedidaModel
+from app.core.domain.entities.ordenes_compra import OrdenesCompra
 from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
-import logging
+from app.core.ports.repositories.ordenes_compra_repository import (
+    OrdenesCompraRepositoryPort,
+)
 
 logger = logging.getLogger(__name__)
+
+
+def _handle_orden_compra_evento(event_data: dict):
+    """
+    Handler que se ejecuta en thread separado con NUEVA transacción
+    Equivalente a @Transactional(propagation = REQUIRES_NEW)
+
+    Este método se ejecuta DESPUÉS del commit exitoso de la OC
+
+    Args:
+        event_data: Datos del evento
+    """
+    from app.dependencies import get_db
+    from app.core.use_cases.registro_compra.procesar_registro_compra import ProcesarRegistroCompra
+
+    # NUEVA SESIÓN DB (transacción independiente)
+    db = next(get_db())
+
+    try:
+        logger.info(f"🔄 Procesando evento en thread separado: {event_data.get('tipo_evento')}")
+
+        # Ejecutar caso de uso de procesamiento
+        use_case = ProcesarRegistroCompra(db)
+        use_case.execute(event_data)
+
+        logger.info(f"✅ Evento procesado exitosamente")
+
+    except Exception as e:
+        logger.error(f"❌ Error en handler de evento: {e}", exc_info=True)
+        # No propagar error - ya está en thread separado
+
+    finally:
+        db.close()
 
 
 class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
@@ -138,7 +161,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     'cantidad_ordenes': len(orders),
                     'consorcio': first_order.consorcio if first_order.consorcio else False
                 },
-                handler=self._handle_orden_compra_evento
+                handler=_handle_orden_compra_evento
             )
 
             # Commit de todas las órdenes de una sola vez
@@ -297,7 +320,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
     def obtener_ordenes_por_contacto_y_version(
         self, id_cotizacion: int, id_version: int, id_contacto: int
-    ) -> List[OrdenesCompraModel]:
+    ) -> list[type[OrdenesCompraModel]] | list[Any]:
         """
         Obtiene las órdenes de compra de un contacto específico en una versión de cotización
 
@@ -329,35 +352,3 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         except Exception as e:
             print(f"Error al obtener órdenes por contacto: {e}")
             return []
-
-    def _handle_orden_compra_evento(self, event_data: dict):
-        """
-        Handler que se ejecuta en thread separado con NUEVA transacción
-        Equivalente a @Transactional(propagation = REQUIRES_NEW)
-
-        Este método se ejecuta DESPUÉS del commit exitoso de la OC
-
-        Args:
-            event_data: Datos del evento
-        """
-        from app.dependencies import get_db
-        from app.core.use_cases.registro_compra.procesar_registro_compra import ProcesarRegistroCompra
-
-        # NUEVA SESIÓN DB (transacción independiente)
-        db = next(get_db())
-
-        try:
-            logger.info(f"🔄 Procesando evento en thread separado: {event_data.get('tipo_evento')}")
-
-            # Ejecutar caso de uso de procesamiento
-            use_case = ProcesarRegistroCompra(db)
-            use_case.execute(event_data)
-
-            logger.info(f"✅ Evento procesado exitosamente")
-
-        except Exception as e:
-            logger.error(f"❌ Error en handler de evento: {e}", exc_info=True)
-            # No propagar error - ya está en thread separado
-
-        finally:
-            db.close()

@@ -123,3 +123,5 @@ docker-compose.override.yml
 
 # Archivos de sesión Redis
 dump.rdb
+
+nul
