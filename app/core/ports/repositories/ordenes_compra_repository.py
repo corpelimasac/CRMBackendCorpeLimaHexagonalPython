@@ -28,3 +28,43 @@ class OrdenesCompraRepositoryPort(ABC):
   def obtener_ordenes_por_contacto_y_version(self, id_cotizacion: int, id_version: int, id_contacto: int) -> List[Any]:
     """Obtiene las órdenes de compra de un contacto específico en una versión de cotización."""
     pass
+
+  @abstractmethod
+  def obtener_orden_por_id(self, id_orden: int) -> OrdenesCompra:
+    """Obtiene una orden de compra por su ID."""
+    pass
+
+  @abstractmethod
+  def eliminar_orden(self, id_orden: int) -> bool:
+    """Elimina una orden de compra por su ID."""
+    pass
+
+  @abstractmethod
+  def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None) -> bool:
+    """Actualiza los campos básicos de una orden de compra."""
+    pass
+
+  @abstractmethod
+  def obtener_detalles_orden(self, id_orden: int) -> List[Any]:
+    """Obtiene los detalles de una orden de compra."""
+    pass
+
+  @abstractmethod
+  def actualizar_detalle_producto(self, id_oc_detalle: int, cantidad: int, precio_unitario: float, precio_total: float) -> bool:
+    """Actualiza un detalle de producto existente."""
+    pass
+
+  @abstractmethod
+  def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float) -> Any:
+    """Crea un nuevo detalle de producto."""
+    pass
+
+  @abstractmethod
+  def eliminar_detalle_producto(self, id_oc_detalle: int) -> bool:
+    """Elimina un detalle de producto."""
+    pass
+
+  @abstractmethod
+  def obtener_orden_completa(self, id_orden: int) -> Any:
+    """Obtiene la orden completa con todos sus datos (proveedor, contacto, productos)."""
+    pass

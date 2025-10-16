@@ -14,9 +14,13 @@ from app.core.use_cases.upload_invoice_use_case import UploadInvoiceUseCase
 from app.core.use_cases.proveedores.get_provider_contacts_use_case import GetProviderContactsUseCase
 from app.adapters.outbound.database.repositories.proveedores_repository import ProveedoresRepository
 from app.core.use_cases.generar_oc.generar_orden_compra import GenerarOrdenCompra
+from app.core.use_cases.generar_oc.eliminar_orden_compra import EliminarOrdenCompra
+from app.core.use_cases.generar_oc.actualizar_orden_compra import ActualizarOrdenCompra
+from app.core.use_cases.generar_oc.obtener_orden_compra import ObtenerOrdenCompra
 from app.adapters.outbound.database.repositories.ordenes_compra_repository import OrdenesCompraRepository
 from app.adapters.outbound.database.repositories.cotizacion_version_repository import CotizacionVersionesRepository
 from app.adapters.outbound.excel.openpyxl_excel_generator import OpenPyXLExcelGenerator
+from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from app.core.use_cases.integracion_sunat.integracion_sunat_uc import IntegracionSunatUC
 
 
@@ -65,6 +69,37 @@ def get_generate_purchase_order_use_case(db: Session = Depends(get_db)) -> Gener
        file_storage=AWSFileStorage()
     )
     
+def get_delete_purchase_order_use_case(db: Session = Depends(get_db)) -> EliminarOrdenCompra:
+    """
+    Construye y devuelve una instancia del caso de uso de eliminación de orden de compra con sus dependencias inyectadas.
+    """
+    ordenes_compra_repo = OrdenesCompraRepository(db)
+    s3_service = S3Service()
+    return EliminarOrdenCompra(
+        ordenes_compra_repo=ordenes_compra_repo,
+        s3_service=s3_service
+    )
+
+def get_update_purchase_order_use_case(db: Session = Depends(get_db)) -> ActualizarOrdenCompra:
+    """
+    Construye y devuelve una instancia del caso de uso de actualización de orden de compra con sus dependencias inyectadas.
+    """
+    ordenes_compra_repo = OrdenesCompraRepository(db)
+    s3_service = S3Service()
+    return ActualizarOrdenCompra(
+        ordenes_compra_repo=ordenes_compra_repo,
+        excel_generator=OpenPyXLExcelGenerator(ordenes_compra_repo),
+        file_storage=AWSFileStorage(),
+        s3_service=s3_service
+    )
+
+def get_obtener_purchase_order_use_case(db: Session = Depends(get_db)) -> ObtenerOrdenCompra:
+    """
+    Construye y devuelve una instancia del caso de uso de obtención de orden de compra con sus dependencias inyectadas.
+    """
+    ordenes_compra_repo = OrdenesCompraRepository(db)
+    return ObtenerOrdenCompra(ordenes_compra_repo=ordenes_compra_repo)
+
 def get_integracion_sunat_use_case() -> IntegracionSunatUC:
     import os
     # Usar headless=True en producción (Railway/Docker) y headless=False en local

@@ -82,5 +82,64 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
                 if os.path.exists(archivo_path):
                     with open(archivo_path, 'rb') as f:
                         excel_files[generador.output_file] = f.read()
-        
+
+        return excel_files
+
+    def generate_from_data(self, orden_data: Any, productos_data: list[Any], proveedor_data: Any, numero_oc: str, consorcio: bool = False) -> Dict[str, bytes]:
+        """
+        Genera archivos Excel a partir de datos directos sin consultar BD.
+
+        Args:
+            orden_data: Datos de la orden (moneda, pago, entrega, fecha)
+            productos_data: Lista de productos con sus detalles
+            proveedor_data: Datos del proveedor y contacto
+            numero_oc: Número de la orden de compra
+            consorcio: Si es consorcio
+
+        Returns:
+            Dict[str, bytes]: Diccionario con nombre de archivo y contenido en bytes
+        """
+        excel_files = {}
+
+        # Determinar IGV del primer producto (asumimos que todos tienen el mismo)
+        igv = productos_data[0].get('igv', 'SIN IGV') if productos_data else 'SIN IGV'
+
+        # Convertir datos al formato esperado por Generador
+        datos_para_excel = [
+            {
+                'CANT': p.get('cantidad'),
+                'UMED': p.get('unidadMedida'),
+                'PRODUCTO': p.get('producto'),
+                'MARCA': p.get('marca'),
+                'MODELO': p.get('modelo', ''),
+                'P.UNIT': p.get('precioUnitario'),
+                'PROVEEDOR': proveedor_data.get('razonSocial'),
+                'PERSONAL': proveedor_data.get('nombreContacto'),
+                'CELULAR': proveedor_data.get('celular', ''),
+                'CORREO': proveedor_data.get('correo', ''),
+                'DIRECCION': proveedor_data.get('direccion', ''),
+                'FECHA': orden_data.get('fecha'),
+                'MONEDA': orden_data.get('moneda'),
+                'PAGO': orden_data.get('pago')
+            } for p in productos_data
+        ]
+
+        # Crear directorio temporal
+        with tempfile.TemporaryDirectory() as temp_dir:
+            generador = Generador(
+                num_orden=numero_oc,
+                oc=datos_para_excel,
+                proveedor=proveedor_data.get('razonSocial', 'Proveedor'),
+                igv=igv,
+                output_folder=temp_dir,
+                consorcio=consorcio
+            )
+            generador.generar_excel()
+
+            # Leer el archivo generado
+            archivo_path = os.path.join(temp_dir, generador.output_file)
+            if os.path.exists(archivo_path):
+                with open(archivo_path, 'rb') as f:
+                    excel_files[generador.output_file] = f.read()
+
         return excel_files

@@ -8,6 +8,27 @@ import asyncio
 from app.config.cache.redis_cache import get_cache_service
 
 
+def _validar_ruc(ruc: str) -> bool:
+    """
+    Valida el formato del RUC
+
+    Args:
+        ruc (str): Número de RUC a validar
+
+    Returns:
+        bool: True si el formato es válido
+    """
+    # El RUC debe tener exactamente 11 dígitos
+    if not ruc or len(ruc) != 11:
+        return False
+
+    # Debe contener solo números
+    if not ruc.isdigit():
+        return False
+
+    return True
+
+
 class IntegracionSunatUC:
     """
     Caso de uso para consultar información de RUC en SUNAT
@@ -29,7 +50,7 @@ class IntegracionSunatUC:
             Dict: Información del RUC o mensaje de error
         """
         # Validar formato de RUC
-        if not self._validar_ruc(ruc):
+        if not _validar_ruc(ruc):
             return {
                 "message": "Error al consultar RUC",
                 "detail": "El formato del RUC no es válido. Debe tener 11 dígitos.",
@@ -74,23 +95,3 @@ class IntegracionSunatUC:
                 "detail": f"Error interno al consultar el RUC {ruc}: {str(e)}",
                 "ruc": ruc
             }
-
-    def _validar_ruc(self, ruc: str) -> bool:
-        """
-        Valida el formato del RUC
-
-        Args:
-            ruc (str): Número de RUC a validar
-
-        Returns:
-            bool: True si el formato es válido
-        """
-        # El RUC debe tener exactamente 11 dígitos
-        if not ruc or len(ruc) != 11:
-            return False
-
-        # Debe contener solo números
-        if not ruc.isdigit():
-            return False
-
-        return True

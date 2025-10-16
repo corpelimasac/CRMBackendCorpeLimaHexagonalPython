@@ -1,7 +1,6 @@
 # app/core/use_cases/proveedores/get_provider_contacts_use_case.py
 from typing import List
 from app.core.ports.repositories.proveedores_repository_port import ProveedoresRepositoryPort
-from app.core.domain.entities.proveedor_contacto import ProveedorContacto
 from app.adapters.inbound.api.schemas.proveedor_schemas import ContactResponseDTO
 
 class GetProviderContactsUseCase:

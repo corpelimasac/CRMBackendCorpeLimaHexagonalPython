@@ -352,3 +352,342 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         except Exception as e:
             print(f"Error al obtener órdenes por contacto: {e}")
             return []
+
+    def obtener_orden_por_id(self, id_orden: int) -> OrdenesCompra:
+        """
+        Obtiene una orden de compra por su ID
+
+        Args:
+            id_orden (int): ID de la orden de compra
+
+        Returns:
+            OrdenesCompra: Orden de compra encontrada
+
+        Raises:
+            ValueError: Si la orden no existe
+        """
+        try:
+            orden = (
+                self.db.query(OrdenesCompraModel)
+                .filter(OrdenesCompraModel.id_orden == id_orden)
+                .first()
+            )
+
+            if not orden:
+                raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
+
+            return orden
+
+        except Exception as e:
+            logger.error(f"Error al obtener orden por ID {id_orden}: {e}")
+            raise
+
+    def eliminar_orden(self, id_orden: int) -> bool:
+        """
+        Elimina una orden de compra y sus detalles asociados
+
+        Args:
+            id_orden (int): ID de la orden de compra
+
+        Returns:
+            bool: True si se eliminó correctamente, False en caso contrario
+
+        Raises:
+            ValueError: Si la orden no existe
+        """
+        try:
+            # Verificar que la orden existe
+            orden = (
+                self.db.query(OrdenesCompraModel)
+                .filter(OrdenesCompraModel.id_orden == id_orden)
+                .first()
+            )
+
+            if not orden:
+                raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
+
+            # Eliminar detalles de la orden primero (debido a FK)
+            self.db.query(OrdenesCompraDetallesModel).filter(
+                OrdenesCompraDetallesModel.id_orden == id_orden
+            ).delete()
+
+            # Eliminar la orden
+            self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == id_orden
+            ).delete()
+
+            self.db.commit()
+            logger.info(f"Orden de compra {id_orden} eliminada exitosamente")
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al eliminar orden de compra {id_orden}: {e}")
+            raise
+
+    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None) -> bool:
+        """
+        Actualiza los campos básicos de una orden de compra
+
+        Args:
+            id_orden (int): ID de la orden de compra
+            moneda (str, optional): Nueva moneda
+            pago (str, optional): Nueva forma de pago
+            entrega (str, optional): Nuevas condiciones de entrega
+
+        Returns:
+            bool: True si se actualizó correctamente
+
+        Raises:
+            ValueError: Si la orden no existe
+        """
+        try:
+            orden = (
+                self.db.query(OrdenesCompraModel)
+                .filter(OrdenesCompraModel.id_orden == id_orden)
+                .first()
+            )
+
+            if not orden:
+                raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
+
+            # Actualizar solo los campos que se proporcionaron
+            if moneda is not None:
+                orden.moneda = moneda
+            if pago is not None:
+                orden.pago = pago
+            if entrega is not None:
+                orden.entrega = entrega
+
+            self.db.commit()
+            logger.info(f"Orden de compra {id_orden} actualizada exitosamente")
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al actualizar orden de compra {id_orden}: {e}")
+            raise
+
+    def obtener_detalles_orden(self, id_orden: int) -> List[Any]:
+        """
+        Obtiene los detalles de una orden de compra
+
+        Args:
+            id_orden (int): ID de la orden de compra
+
+        Returns:
+            List[Any]: Lista de detalles de la orden
+        """
+        try:
+            detalles = (
+                self.db.query(OrdenesCompraDetallesModel)
+                .filter(OrdenesCompraDetallesModel.id_orden == id_orden)
+                .all()
+            )
+            return detalles
+
+        except Exception as e:
+            logger.error(f"Error al obtener detalles de orden {id_orden}: {e}")
+            raise
+
+    def actualizar_detalle_producto(self, id_oc_detalle: int, cantidad: int, precio_unitario: float, precio_total: float) -> bool:
+        """
+        Actualiza un detalle de producto existente
+
+        Args:
+            id_oc_detalle (int): ID del detalle de la orden
+            cantidad (int): Nueva cantidad
+            precio_unitario (float): Nuevo precio unitario
+            precio_total (float): Nuevo precio total
+
+        Returns:
+            bool: True si se actualizó correctamente
+
+        Raises:
+            ValueError: Si el detalle no existe
+        """
+        try:
+            detalle = (
+                self.db.query(OrdenesCompraDetallesModel)
+                .filter(OrdenesCompraDetallesModel.id_oc_detalle == id_oc_detalle)
+                .first()
+            )
+
+            if not detalle:
+                raise ValueError(f"Detalle de orden con ID {id_oc_detalle} no encontrado")
+
+            detalle.cantidad = cantidad
+            detalle.precio_unitario = precio_unitario
+            detalle.precio_total = precio_total
+
+            self.db.commit()
+            logger.info(f"Detalle {id_oc_detalle} actualizado exitosamente")
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al actualizar detalle {id_oc_detalle}: {e}")
+            raise
+
+    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float) -> Any:
+        """
+        Crea un nuevo detalle de producto
+
+        Args:
+            id_orden (int): ID de la orden de compra
+            id_producto (int): ID del producto
+            cantidad (int): Cantidad
+            precio_unitario (float): Precio unitario
+            precio_total (float): Precio total
+
+        Returns:
+            Any: Detalle creado
+        """
+        try:
+            nuevo_detalle = OrdenesCompraDetallesModel(
+                id_orden=id_orden,
+                id_producto=id_producto,
+                cantidad=cantidad,
+                precio_unitario=precio_unitario,
+                precio_total=precio_total
+            )
+
+            self.db.add(nuevo_detalle)
+            self.db.commit()
+            self.db.refresh(nuevo_detalle)
+
+            logger.info(f"Nuevo detalle creado para orden {id_orden}, producto {id_producto}")
+            return nuevo_detalle
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al crear detalle: {e}")
+            raise
+
+    def eliminar_detalle_producto(self, id_oc_detalle: int) -> bool:
+        """
+        Elimina un detalle de producto
+
+        Args:
+            id_oc_detalle (int): ID del detalle de la orden
+
+        Returns:
+            bool: True si se eliminó correctamente
+
+        Raises:
+            ValueError: Si el detalle no existe
+        """
+        try:
+            detalle = (
+                self.db.query(OrdenesCompraDetallesModel)
+                .filter(OrdenesCompraDetallesModel.id_oc_detalle == id_oc_detalle)
+                .first()
+            )
+
+            if not detalle:
+                raise ValueError(f"Detalle de orden con ID {id_oc_detalle} no encontrado")
+
+            self.db.delete(detalle)
+            self.db.commit()
+
+            logger.info(f"Detalle {id_oc_detalle} eliminado exitosamente")
+            return True
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al eliminar detalle {id_oc_detalle}: {e}")
+            raise
+
+    def obtener_orden_completa(self, id_orden: int) -> Any:
+        """
+        Obtiene la orden completa con todos sus datos (proveedor, contacto, productos)
+
+        Args:
+            id_orden (int): ID de la orden de compra
+
+        Returns:
+            Any: Diccionario con toda la información de la orden
+
+        Raises:
+            ValueError: Si la orden no existe
+        """
+        try:
+            # Consulta principal similar a obtener_info_oc pero filtrada por id_orden
+            query = (
+                self.db.query(
+                    OrdenesCompraModel.id_orden.label("ID_ORDEN"),
+                    OrdenesCompraModel.correlative.label("NUMERO_OC"),
+                    OrdenesCompraModel.id_cotizacion.label("IDCOTIZACION"),
+                    OrdenesCompraModel.id_cotizacion_versiones.label("IDVERSION"),
+                    func.date(OrdenesCompraModel.fecha_creacion).label("FECHA"),
+                    OrdenesCompraModel.moneda.label("MONEDA"),
+                    OrdenesCompraModel.pago.label("PAGO"),
+                    OrdenesCompraModel.entrega.label("ENTREGA"),
+                    OrdenesCompraModel.total.label("TOTAL_ORDEN"),
+                    OrdenesCompraModel.ruta_s3.label("RUTA_S3"),
+                    # Datos del proveedor
+                    ProveedoresModel.id_proveedor.label("IDPROVEEDOR"),
+                    ProveedoresModel.razon_social.label("PROVEEDOR"),
+                    ProveedoresModel.direccion.label("DIRECCION"),
+                    # Datos del contacto
+                    OrdenesCompraModel.id_proveedor_contacto.label("IDPROVEEDORCONTACTO"),
+                    ProveedorContactosModel.nombre.label("PERSONAL"),
+                    ProveedorContactosModel.telefono.label("TELEFONO"),
+                    ProveedorContactosModel.celular.label("CELULAR"),
+                    ProveedorContactosModel.correo.label("CORREO"),
+                    # Datos del detalle/producto
+                    OrdenesCompraDetallesModel.id_oc_detalle.label("ID_OC_DETALLE"),
+                    OrdenesCompraDetallesModel.id_producto.label("IDPRODUCTO"),
+                    ProductosModel.nombre.label("PRODUCTO"),
+                    MarcasModel.nombre.label("MARCA"),
+                    ProductosModel.modelo_marca.label("MODELO"),
+                    UnidadMedidaModel.descripcion.label("UMED"),
+                    OrdenesCompraDetallesModel.cantidad.label("CANT"),
+                    OrdenesCompraDetallesModel.precio_unitario.label("PUNIT"),
+                    OrdenesCompraDetallesModel.precio_total.label("TOTAL"),
+                    case(
+                        (ProveedorDetalleModel.igv == "SIN IGV", "SIN IGV"),
+                        else_="CON IGV",
+                    ).label("IGV"),
+                )
+                .select_from(OrdenesCompraModel)
+                .join(
+                    OrdenesCompraDetallesModel,
+                    OrdenesCompraModel.id_orden == OrdenesCompraDetallesModel.id_orden,
+                )
+                .join(
+                    ProductosModel,
+                    OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto,
+                )
+                .join(
+                    UnidadMedidaModel,
+                    ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida,
+                )
+                .join(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)
+                .join(
+                    ProveedoresModel,
+                    OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor,
+                )
+                .join(
+                    ProveedorDetalleModel,
+                    ProductosModel.id_producto == ProveedorDetalleModel.id_producto,
+                )
+                .join(
+                    ProveedorContactosModel,
+                    OrdenesCompraModel.id_proveedor_contacto
+                    == ProveedorContactosModel.id_proveedor_contacto,
+                )
+                .filter(OrdenesCompraModel.id_orden == id_orden)
+            )
+
+            resultados = query.all()
+
+            if not resultados:
+                raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
+
+            logger.info(f"Orden completa {id_orden} obtenida con {len(resultados)} productos")
+            return resultados
+
+        except Exception as e:
+            logger.error(f"Error al obtener orden completa {id_orden}: {e}")
+            raise

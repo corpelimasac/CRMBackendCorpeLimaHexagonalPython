@@ -6,6 +6,18 @@ from app.core.ports.repositories.productos_cotizaciones_repository import Produc
 from typing import List, Dict, Any
 from collections import defaultdict
 
+
+def _group_by_provider(raw_data: List[Any]) -> Dict[int, Dict[str, Any]]:
+    """Agrupa los datos por proveedor"""
+    providers = defaultdict(lambda: {"rows": []})
+
+    for row in raw_data:
+        provider_id = row.IDPROVEEDOR
+        providers[provider_id]["rows"].append(row)
+
+    return providers
+
+
 class GetFinalizedQuotationUseCase:
     def __init__(self, productos_cotizaciones_repo: ProductosCotizacionesRepositoryPort):
         self.productos_cotizaciones_repo = productos_cotizaciones_repo
@@ -23,7 +35,7 @@ class GetFinalizedQuotationUseCase:
                 )
 
             # 2. Agrupar datos por proveedor
-            providers_data = self._group_by_provider(raw_data)
+            providers_data = _group_by_provider(raw_data)
             
             # 3. Mapear a DTOs
             response_data_dtos = []
@@ -77,12 +89,3 @@ class GetFinalizedQuotationUseCase:
                 data=[]
             )
 
-    def _group_by_provider(self, raw_data: List[Any]) -> Dict[int, Dict[str, Any]]:
-        """Agrupa los datos por proveedor"""
-        providers = defaultdict(lambda: {"rows": []})
-        
-        for row in raw_data:
-            provider_id = row.IDPROVEEDOR
-            providers[provider_id]["rows"].append(row)
-        
-        return providers

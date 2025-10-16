@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 import logging
 import sys
 
-from app.adapters.inbound.api.routers import health, generar_oc, dolar, upload_router, cotizacion_finalizada_router, proveedores_router, ordenes_compra, integracion_sunat
+from app.adapters.inbound.api.routers import health, dolar, upload_router, cotizacion_finalizada_router, proveedores_router, ordenes_compra, integracion_sunat
 from app.config.settings import get_settings
 from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
 
@@ -61,7 +61,7 @@ async def lifespan(app: FastAPI):
     print(shutdown_msg)
     logger.info(shutdown_msg)
 
-    event_dispatcher.shutdown(wait=True, timeout=settings.evento_financiero_timeout)
+    event_dispatcher.shutdown(wait=True)
 
     final_msg = f"""
 ✅ Aplicación cerrada correctamente
@@ -145,7 +145,6 @@ def create_app() -> FastAPI:
     # Registrar rutas
     app.include_router(health.router, prefix="/api", tags=["Health"])
     app.include_router(upload_router.router, prefix="/api", tags=["Generar Carta Garantia"])
-    app.include_router(generar_oc.router, prefix="/api", tags=["Generar OC"])
     app.include_router(ordenes_compra.router, prefix="/api", tags=["Ordenes de Compra"])
     app.include_router(cotizacion_finalizada_router.router, prefix="/api", tags=["Cotizacion Finalizada"])
     app.include_router(dolar.router, prefix="/api", tags=["Dolar"])

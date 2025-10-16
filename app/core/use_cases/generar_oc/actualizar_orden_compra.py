@@ -1,0 +1,255 @@
+import os
+import logging
+from fastapi import HTTPException
+from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
+from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
+from app.core.ports.services.file_storage_port import FileStoragePort
+from app.adapters.outbound.external_services.aws.s3_service import S3Service
+from app.adapters.inbound.api.schemas.ordenes_compra_schemas import ActualizarOrdenCompraRequest
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
+
+logger = logging.getLogger(__name__)
+
+
+class ActualizarOrdenCompra:
+    """
+    Caso de uso para actualizar una orden de compra.
+
+    Este caso de uso:
+    1. Valida que la orden exista
+    2. Actualiza los campos básicos de la orden (moneda, pago, entrega)
+    3. Procesa los productos:
+       - Productos con idOcDetalle y eliminar=true: Se eliminan
+       - Productos con idOcDetalle y eliminar=false: Se actualizan
+       - Productos sin idOcDetalle: Se crean nuevos (eliminar siempre será false)
+    4. Regenera el Excel con los datos actualizados
+    5. Elimina el archivo anterior de S3
+    6. Sube el nuevo Excel a S3
+    7. Actualiza la ruta S3 en la BD
+
+    Arquitectura Hexagonal:
+    - Caso de uso en la capa de aplicación
+    - Se comunica con puertos (repositories, services)
+    - Los adaptadores implementan los puertos
+    """
+
+    def __init__(
+        self,
+        ordenes_compra_repo: OrdenesCompraRepositoryPort,
+        excel_generator: ExcelGeneratorPort,
+        file_storage: FileStoragePort,
+        s3_service: S3Service = None
+    ):
+        """
+        Inicializa el caso de uso con las dependencias necesarias.
+
+        Args:
+            ordenes_compra_repo: Repositorio de órdenes de compra
+            excel_generator: Generador de archivos Excel
+            file_storage: Servicio de almacenamiento de archivos
+            s3_service: Servicio de S3 (opcional, se crea uno nuevo si no se proporciona)
+        """
+        self.ordenes_compra_repo = ordenes_compra_repo
+        self.excel_generator = excel_generator
+        self.file_storage = file_storage
+        self.s3_service = s3_service or S3Service()
+        self.bucket = os.getenv('AWS_BUCKET_NAME', 'corpelima-bucket')
+
+    async def execute(self, request: ActualizarOrdenCompraRequest) -> dict:
+        """
+        Ejecuta el caso de uso de actualización de orden de compra.
+
+        Args:
+            request (ActualizarOrdenCompraRequest): Datos de la orden a actualizar
+
+        Returns:
+            dict: Resultado de la operación con status, mensaje y nueva URL del Excel
+
+        Raises:
+            HTTPException: Si hay errores durante el proceso
+        """
+        try:
+            logger.info(f"Iniciando actualización de orden de compra ID: {request.idOrden}")
+
+            # 1. Validar que la orden existe
+            orden = self.ordenes_compra_repo.obtener_orden_por_id(request.idOrden)
+            if not orden:
+                raise HTTPException(
+                    status_code=404,
+                    detail=f"Orden de compra con ID {request.idOrden} no encontrada"
+                )
+
+            logger.info(f"Orden encontrada: {orden.correlative if hasattr(orden, 'correlative') else request.idOrden}")
+
+            # Guardar la ruta S3 antigua para eliminarla después
+            ruta_s3_antigua = orden.ruta_s3 if hasattr(orden, 'ruta_s3') else None
+
+            # 2. Actualizar campos básicos de la orden
+            if request.moneda or request.pago or request.entrega:
+                self.ordenes_compra_repo.actualizar_orden(
+                    id_orden=request.idOrden,
+                    moneda=request.moneda,
+                    pago=request.pago,
+                    entrega=request.entrega
+                )
+                logger.info("Campos básicos de la orden actualizados")
+
+            # 3. Procesar productos
+            productos_eliminados = 0
+            productos_actualizados = 0
+            productos_creados = 0
+
+            for producto in request.productos:
+                # Caso 1: Producto existente marcado para eliminar
+                if producto.idOcDetalle is not None and producto.eliminar:
+                    self.ordenes_compra_repo.eliminar_detalle_producto(producto.idOcDetalle)
+                    productos_eliminados += 1
+                    logger.info(f"Producto detalle {producto.idOcDetalle} eliminado")
+
+                # Caso 2: Producto existente a actualizar
+                elif producto.idOcDetalle is not None and not producto.eliminar:
+                    self.ordenes_compra_repo.actualizar_detalle_producto(
+                        id_oc_detalle=producto.idOcDetalle,
+                        cantidad=producto.cantidad,
+                        precio_unitario=producto.pUnitario,
+                        precio_total=producto.ptotal
+                    )
+                    productos_actualizados += 1
+                    logger.info(f"Producto detalle {producto.idOcDetalle} actualizado")
+
+                # Caso 3: Producto nuevo (sin idOcDetalle)
+                elif producto.idOcDetalle is None:
+                    self.ordenes_compra_repo.crear_detalle_producto(
+                        id_orden=request.idOrden,
+                        id_producto=producto.idProducto,
+                        cantidad=producto.cantidad,
+                        precio_unitario=producto.pUnitario,
+                        precio_total=producto.ptotal
+                    )
+                    productos_creados += 1
+                    logger.info(f"Nuevo producto {producto.idProducto} creado en la orden")
+
+            logger.info(f"Resumen de productos: {productos_eliminados} eliminados, "
+                       f"{productos_actualizados} actualizados, {productos_creados} creados")
+
+            # 4. Calcular el nuevo total de la orden
+            detalles_actuales = self.ordenes_compra_repo.obtener_detalles_orden(request.idOrden)
+            total_orden = sum(detalle.precio_total for detalle in detalles_actuales)
+
+            # Actualizar el total en la orden
+            orden_actualizada = self.ordenes_compra_repo.obtener_orden_por_id(request.idOrden)
+            if hasattr(orden_actualizada, 'total'):
+                # Actualizamos directamente el campo total (necesitarías agregar este método al repo)
+                from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
+                from app.dependencies import get_db
+                db = next(get_db())
+                db.query(OrdenesCompraModel).filter(
+                    OrdenesCompraModel.id_orden == request.idOrden
+                ).update({"total": str(total_orden)})
+                db.commit()
+                db.close()
+
+            # 5. Regenerar Excel usando los datos del request (SIN consultar BD)
+            logger.info("Regenerando archivo Excel con datos del request...")
+
+            # Preparar datos de la orden
+            orden_data = {
+                'moneda': request.moneda if request.moneda else orden.moneda if hasattr(orden, 'moneda') else '',
+                'pago': request.pago if request.pago else orden.pago if hasattr(orden, 'pago') else '',
+                'entrega': request.entrega if request.entrega else orden.entrega if hasattr(orden, 'entrega') else '',
+                'fecha': str(orden.fecha_creacion.date()) if hasattr(orden, 'fecha_creacion') else ''
+            }
+
+            # Preparar datos del proveedor (viene del request)
+            proveedor_data = {
+                'razonSocial': request.proveedor.razonSocial,
+                'direccion': request.proveedor.direccion,
+                'nombreContacto': request.proveedor.nombreContacto,
+                'telefono': request.proveedor.telefono,
+                'celular': request.proveedor.celular,
+                'correo': request.proveedor.correo
+            }
+
+            # Preparar datos de productos (solo los NO eliminados, con datos completos del request)
+            productos_data = [
+                {
+                    'cantidad': p.cantidad,
+                    'unidadMedida': p.unidadMedida,
+                    'producto': p.producto,
+                    'marca': p.marca,
+                    'modelo': p.modelo or '',
+                    'precioUnitario': p.pUnitario,
+                    'igv': p.igv
+                }
+                for p in request.productos if not p.eliminar
+            ]
+
+            # Obtener número de OC
+            numero_oc = orden.correlative if hasattr(orden, 'correlative') else ''
+            consorcio = orden.consorcio if hasattr(orden, 'consorcio') else False
+
+            # Generar Excel con datos directos (SIN consultar BD)
+            excel_files = self.excel_generator.generate_from_data(
+                orden_data=orden_data,
+                productos_data=productos_data,
+                proveedor_data=proveedor_data,
+                numero_oc=numero_oc,
+                consorcio=consorcio
+            )
+
+            if not excel_files:
+                raise HTTPException(
+                    status_code=500,
+                    detail="No se pudo generar el archivo Excel"
+                )
+
+            # 6. Eliminar archivo antiguo de S3
+            if ruta_s3_antigua:
+                try:
+                    logger.info(f"Eliminando archivo antiguo de S3: {ruta_s3_antigua}")
+                    self.s3_service.delete_file_from_url(ruta_s3_antigua, self.bucket)
+                    logger.info("Archivo antiguo eliminado de S3")
+                except Exception as e:
+                    logger.warning(f"No se pudo eliminar el archivo antiguo de S3: {e}")
+                    # No lanzamos error aquí, continuamos con la subida del nuevo
+
+            # 7. Subir nuevo Excel a S3
+            logger.info("Subiendo nuevo archivo a S3...")
+            urls = await self.file_storage.save_multiple(excel_files)
+
+            if not urls:
+                raise HTTPException(
+                    status_code=500,
+                    detail="No se pudo subir el archivo a S3"
+                )
+
+            nueva_url_s3 = urls[0]
+            logger.info(f"Nuevo archivo subido a S3: {nueva_url_s3}")
+
+            # 8. Actualizar ruta S3 en la BD
+            self.ordenes_compra_repo.actualizar_ruta_s3(request.idOrden, nueva_url_s3)
+            logger.info("Ruta S3 actualizada en la base de datos")
+
+            return {
+                "status": "success",
+                "message": f"Orden de compra {request.idOrden} actualizada correctamente",
+                "nueva_url_excel": nueva_url_s3,
+                "productos_eliminados": productos_eliminados,
+                "productos_actualizados": productos_actualizados,
+                "productos_creados": productos_creados,
+                "total_orden": float(total_orden)
+            }
+
+        except ValueError as e:
+            logger.error(f"Error de validación: {e}")
+            raise HTTPException(status_code=404, detail=str(e))
+
+        except HTTPException:
+            raise
+
+        except Exception as e:
+            logger.error(f"Error al actualizar orden de compra {request.idOrden}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error interno al actualizar la orden de compra: {str(e)}"
+            )

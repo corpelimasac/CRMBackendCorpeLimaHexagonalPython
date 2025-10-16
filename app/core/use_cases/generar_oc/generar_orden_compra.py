@@ -1,6 +1,5 @@
 from app.core.domain.entities.ordenes_compra import OrdenesCompra, OrdenesCompraItem # ... y otros
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
-from app.core.ports.repositories.cotizacion_repository import CotizacionRepositoryPort
 from app.core.ports.repositories.cotizaciones_versiones_repository import CotizacionVersionesRepositoryPort
 from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
 from app.core.ports.services.file_storage_port import FileStoragePort
@@ -25,7 +24,10 @@ class GenerarOrdenCompra:
         self.excel_generator = excel_generator
         self.file_storage = file_storage
 
-    async def _process_and_generate_excel_for_contacto(self, id_contacto: int, generar_oc_request: GenerarOCRequest) -> str:
+    async def _process_and_generate_excel_for_contacto(
+            self, id_contacto: int,
+            generar_oc_request: GenerarOCRequest
+    ) -> str | None:
         """
         Procesa un contacto específico, genera el Excel, lo sube a S3 y actualiza la URL en la BD.
         Esta función está diseñada para ser ejecutada de manera asíncrona.
