@@ -209,6 +209,7 @@ class SunatScrapper:
         # Extraer datos y poblar DTO
         self._extraer_datos_basicos(page, dto)
         _extraer_trabajadores(page, dto)
+        page.wait_for_timeout(1000)
         self._extraer_representantes_legales(page, dto)
 
         context.close()
@@ -276,7 +277,6 @@ class SunatScrapper:
     """Extrae información del representante legal"""
     try:
       boton_representantes_loc = page.locator('.btnInfRepLeg')
-
       if boton_representantes_loc.is_visible():
           boton_representantes_loc.click()
           page.wait_for_load_state('networkidle')
