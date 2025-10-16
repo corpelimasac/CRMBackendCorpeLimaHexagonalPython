@@ -70,8 +70,8 @@ class ObtenerOrdenCompra:
                 direccion=primer_registro.DIRECCION or "",
                 idProveedorContacto=primer_registro.IDPROVEEDORCONTACTO,
                 nombreContacto=primer_registro.PERSONAL,
-                telefono=primer_registro.TELEFONO,
-                celular=primer_registro.CELULAR,
+                telefono=str(primer_registro.TELEFONO) if primer_registro.TELEFONO else None,
+                celular=str(primer_registro.CELULAR) if primer_registro.CELULAR else None,
                 correo=primer_registro.CORREO
             )
 

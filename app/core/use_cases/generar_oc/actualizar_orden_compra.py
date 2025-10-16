@@ -1,5 +1,6 @@
 import os
 import logging
+from datetime import datetime
 from fastapi import HTTPException
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
@@ -71,7 +72,7 @@ class ActualizarOrdenCompra:
         try:
             logger.info(f"Iniciando actualización de orden de compra ID: {request.idOrden}")
 
-            # 1. Validar que la orden existe
+            # 1. Validar que la orden existe (consulta ligera solo para validación)
             orden = self.ordenes_compra_repo.obtener_orden_por_id(request.idOrden)
             if not orden:
                 raise HTTPException(
@@ -79,10 +80,12 @@ class ActualizarOrdenCompra:
                     detail=f"Orden de compra con ID {request.idOrden} no encontrada"
                 )
 
-            logger.info(f"Orden encontrada: {orden.correlative if hasattr(orden, 'correlative') else request.idOrden}")
+            logger.info(f"Orden encontrada: {request.numeroOc}")
 
-            # Guardar la ruta S3 antigua para eliminarla después
-            ruta_s3_antigua = orden.ruta_s3 if hasattr(orden, 'ruta_s3') else None
+            # Obtener datos desde el request (ya vienen del frontend desde el GET)
+            ruta_s3_antigua = request.rutaS3Antigua
+            numero_oc = request.numeroOc
+            consorcio = request.consorcio
 
             # 2. Actualizar campos básicos de la orden
             if request.moneda or request.pago or request.entrega:
@@ -149,15 +152,16 @@ class ActualizarOrdenCompra:
                 db.commit()
                 db.close()
 
-            # 5. Regenerar Excel usando los datos del request (SIN consultar BD)
-            logger.info("Regenerando archivo Excel con datos del request...")
+            # 5. Regenerar Excel usando los datos del request
+            logger.info("Regenerando archivo Excel con datos actualizados...")
 
-            # Preparar datos de la orden
+            # Preparar datos de la orden (usar fecha actual para el Excel)
+            fecha_actual = datetime.now().date()
             orden_data = {
-                'moneda': request.moneda if request.moneda else orden.moneda if hasattr(orden, 'moneda') else '',
-                'pago': request.pago if request.pago else orden.pago if hasattr(orden, 'pago') else '',
-                'entrega': request.entrega if request.entrega else orden.entrega if hasattr(orden, 'entrega') else '',
-                'fecha': str(orden.fecha_creacion.date()) if hasattr(orden, 'fecha_creacion') else ''
+                'moneda': request.moneda if request.moneda else '',
+                'pago': request.pago if request.pago else '',
+                'entrega': request.entrega if request.entrega else '',
+                'fecha': str(fecha_actual)
             }
 
             # Preparar datos del proveedor (viene del request)
@@ -184,11 +188,7 @@ class ActualizarOrdenCompra:
                 for p in request.productos if not p.eliminar
             ]
 
-            # Obtener número de OC
-            numero_oc = orden.correlative if hasattr(orden, 'correlative') else ''
-            consorcio = orden.consorcio if hasattr(orden, 'consorcio') else False
-
-            # Generar Excel con datos directos (SIN consultar BD)
+            # Generar Excel con datos actualizados
             excel_files = self.excel_generator.generate_from_data(
                 orden_data=orden_data,
                 productos_data=productos_data,

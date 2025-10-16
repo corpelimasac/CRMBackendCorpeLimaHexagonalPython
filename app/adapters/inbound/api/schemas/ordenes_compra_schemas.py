@@ -85,5 +85,8 @@ class ActualizarOrdenCompraRequest(BaseModel):
   moneda: Optional[str] = Field(None, description="Moneda")
   pago: Optional[str] = Field(None, description="Forma de pago")
   entrega: Optional[str] = Field(None, description="Condiciones de entrega")
+  rutaS3Antigua: Optional[str] = Field(None, description="URL del archivo S3 a eliminar")
+  numeroOc: str = Field(..., description="Número de OC (correlativo) obtenido del GET")
+  consorcio: bool = Field(False, description="Si es consorcio")
   # Datos del proveedor para regenerar Excel
   proveedor: ProveedorOrdenResponse = Field(..., description="Datos del proveedor")
