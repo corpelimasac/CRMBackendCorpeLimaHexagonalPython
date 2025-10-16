@@ -5,7 +5,7 @@ import tempfile
 from typing import List
 
 class AWSFileStorage(FileStoragePort):
-    def __init__(self, bucket_name: str = 'bucketcorpe', region: str = 'us-east-1'):
+    def __init__(self, bucket_name: str = 'bucketcorpelima', region: str = 'us-east-1'):
         self.bucket_name = bucket_name
         self.region = region
 
