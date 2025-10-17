@@ -18,7 +18,7 @@ class UsuariosModel(Base):
   correo = Column(String(100), nullable=False)
   celular = Column(Integer, nullable=True)
   estado = Column(Boolean, default=True, nullable=False)
-  fecha_creacion = Column(DateTime, default=datetime.utcnow, nullable=False)
-  fecha_modificacion=Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+  fecha_creacion = Column(DateTime, default=datetime.now, nullable=False)
+  fecha_modificacion=Column(DateTime, default=datetime.now, onupdate=datetime.now)
 
   

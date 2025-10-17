@@ -86,8 +86,8 @@ class ObtenerOrdenCompra:
                     modelo=registro.MODELO or "",
                     unidadMedida=registro.UMED,
                     cantidad=registro.CANT,
-                    precioUnitario=float(registro.PUNIT),
-                    precioTotal=float(registro.TOTAL),
+                    pUnitario=float(registro.PUNIT),
+                    ptotal=float(registro.TOTAL),
                     igv=registro.IGV
                 )
                 productos_data.append(producto)
@@ -96,14 +96,12 @@ class ObtenerOrdenCompra:
             orden_response = OrdenCompraDetalleResponse(
                 idOrden=primer_registro.ID_ORDEN,
                 numeroOc=primer_registro.NUMERO_OC,
-                idCotizacion=primer_registro.IDCOTIZACION,
-                idVersion=primer_registro.IDVERSION,
-                fecha=str(primer_registro.FECHA),
                 moneda=primer_registro.MONEDA,
                 pago=primer_registro.PAGO,
-                entrega=primer_registro.ENTREGA,
                 total=float(primer_registro.TOTAL_ORDEN) if primer_registro.TOTAL_ORDEN else 0.0,
-                rutaS3=primer_registro.RUTA_S3,
+                entrega=primer_registro.ENTREGA,
+                rutaS3Antigua=primer_registro.RUTA_S3,
+                consorcio=bool(primer_registro.CONSORCIO) if hasattr(primer_registro, 'CONSORCIO') else False,
                 proveedor=proveedor_data,
                 productos=productos_data
             )

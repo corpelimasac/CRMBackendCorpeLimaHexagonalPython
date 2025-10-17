@@ -10,6 +10,7 @@ from .cotizacion_model import CotizacionModel
 # Modelos de registro de compras (antes de ordenes_compra por FK)
 from .registro_compra_model import RegistroCompraModel
 from .registro_compra_orden_model import RegistroCompraOrdenModel
+from .registro_compra_auditoria_model import RegistroCompraAuditoriaModel
 from .tasa_cambio_sunat_model import TasaCambioSunatModel
 
 from .ordenes_compra_model import OrdenesCompraModel
@@ -48,6 +49,7 @@ __all__ = [
     "CotizacionModel",
     "RegistroCompraModel",
     "RegistroCompraOrdenModel",
+    "RegistroCompraAuditoriaModel",
     "TasaCambioSunatModel",
     "OrdenesCompraModel",
     "ProveedoresModel",

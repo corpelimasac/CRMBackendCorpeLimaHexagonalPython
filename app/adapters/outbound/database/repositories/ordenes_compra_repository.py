@@ -353,7 +353,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             print(f"Error al obtener órdenes por contacto: {e}")
             return []
 
-    def obtener_orden_por_id(self, id_orden: int) -> OrdenesCompra:
+    def obtener_orden_por_id(self, id_orden: int) -> type[OrdenesCompraModel]:
         """
         Obtiene una orden de compra por su ID
 
@@ -408,6 +408,20 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             if not orden:
                 raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
 
+            # Guardar datos de la orden ANTES de eliminarla (para el evento y auditoría)
+            id_cotizacion = orden.id_cotizacion
+            id_cotizacion_versiones = orden.id_cotizacion_versiones
+            numero_oc = orden.correlative
+            monto_orden = float(orden.total) if orden.total else 0.0
+
+            # Verificar si tiene registro de compra
+            registro_orden = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.id_orden == id_orden
+            ).first()
+
+            tenia_registro = registro_orden is not None
+            compra_id = registro_orden.compra_id if registro_orden else None
+
             # 1. Eliminar registro_compra_ordenes primero (FK a ordenes_compra)
             deleted_registros = self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.id_orden == id_orden
@@ -428,8 +442,33 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 OrdenesCompraModel.id_orden == id_orden
             ).delete()
 
+            # 4. Registrar auditoría de eliminación de orden
+            from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+            auditoria_service = RegistroCompraAuditoriaService(self.db)
+            auditoria_service.registrar_eliminacion_orden(
+                id_orden=id_orden,
+                numero_oc=numero_oc,
+                id_cotizacion=id_cotizacion,
+                id_cotizacion_versiones=id_cotizacion_versiones,
+                monto_orden=monto_orden,
+                tenia_registro=tenia_registro,
+                compra_id=compra_id
+            )
+
+            # 5. Disparar evento para recalcular registro de compra
+            self.event_dispatcher.publish(
+                session=self.db,
+                event_data={
+                    'tipo_evento': 'ORDEN_COMPRA_EDITADA',
+                    'id_cotizacion_nueva': id_cotizacion,
+                    'id_cotizacion_versiones': id_cotizacion_versiones,
+                    'cambio_cotizacion': False
+                },
+                handler=_handle_orden_compra_evento
+            )
+
             self.db.commit()
-            logger.info(f"Orden de compra {id_orden} eliminada exitosamente")
+            logger.info(f"✅ Orden de compra {id_orden} eliminada - Evento disparado para actualizar registro")
             return True
 
         except Exception as e:
@@ -637,6 +676,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     OrdenesCompraModel.entrega.label("ENTREGA"),
                     OrdenesCompraModel.total.label("TOTAL_ORDEN"),
                     OrdenesCompraModel.ruta_s3.label("RUTA_S3"),
+                    OrdenesCompraModel.consorcio.label("CONSORCIO"),
                     # Datos del proveedor
                     ProveedoresModel.id_proveedor.label("IDPROVEEDOR"),
                     ProveedoresModel.razon_social.label("PROVEEDOR"),

@@ -124,6 +124,7 @@ async def update_order(
     """
     try:
         _log_inicio(f"🔄 INICIO - Actualización de orden de compra ID: {request.idOrden}")
+        logger.info(f"📦 Request recibido: idOrden={request.idOrden}, productos={len(request.productos)}")
         resultado = await use_case.execute(request)
         _log_fin("✅ FIN - Orden actualizada exitosamente")
         return resultado

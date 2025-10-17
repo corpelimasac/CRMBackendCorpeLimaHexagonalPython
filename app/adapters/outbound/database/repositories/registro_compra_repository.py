@@ -113,12 +113,41 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         Returns:
             RegistroCompraModel: Registro guardado/actualizado
         """
+        from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+
         try:
+            # Inicializar servicio de auditoría
+            auditoria_service = RegistroCompraAuditoriaService(self.db)
+
             # Buscar registro existente
             registro = self.obtener_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
+            # Guardar estado anterior para auditoría
+            datos_anteriores = None
+            ordenes_anteriores = []
+            es_actualizacion = False
+
             if registro:
+                es_actualizacion = True
                 logger.info(f"Actualizando registro de compra existente para cotización {id_cotizacion}")
+
+                # Guardar datos anteriores para auditoría
+                datos_anteriores = {
+                    'moneda': registro.moneda,
+                    'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
+                    'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
+                    'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
+                    'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
+                    'tipo_empresa': registro.tipo_empresa
+                }
+
+                # Obtener órdenes anteriores
+                ordenes_anteriores_query = self.db.query(RegistroCompraOrdenModel).filter(
+                    RegistroCompraOrdenModel.compra_id == registro.compra_id
+                ).all()
+                ordenes_anteriores = self.db.query(OrdenesCompraModel).filter(
+                    OrdenesCompraModel.id_orden.in_([o.id_orden for o in ordenes_anteriores_query])
+                ).all()
 
                 # Actualizar montos
                 registro.moneda = datos_calculados['moneda']
@@ -168,6 +197,26 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             self.db.commit()
             logger.info(f"✅ Registro de compra guardado exitosamente: ID {registro.compra_id}")
 
+            # Registrar auditoría
+            if es_actualizacion:
+                auditoria_service.registrar_actualizacion_registro(
+                    compra_id=registro.compra_id,
+                    id_cotizacion=id_cotizacion,
+                    id_cotizacion_versiones=id_cotizacion_versiones,
+                    datos_anteriores=datos_anteriores,
+                    datos_nuevos=datos_calculados,
+                    ordenes_anteriores=ordenes_anteriores,
+                    ordenes_nuevas=ordenes
+                )
+            else:
+                auditoria_service.registrar_creacion_registro(
+                    compra_id=registro.compra_id,
+                    id_cotizacion=id_cotizacion,
+                    id_cotizacion_versiones=id_cotizacion_versiones,
+                    datos_nuevos=datos_calculados,
+                    ordenes=ordenes
+                )
+
             return registro
 
         except Exception as e:
@@ -210,8 +259,42 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         Args:
             compra_id: ID del registro de compra
         """
+        from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+
         try:
-            # Eliminar detalles de registro_compra_ordenes (CASCADE se encargará si está configurado)
+            # Obtener datos antes de eliminar para auditoría
+            registro = self.db.query(RegistroCompraModel).filter(
+                RegistroCompraModel.compra_id == compra_id
+            ).first()
+
+            if not registro:
+                logger.warning(f"Registro de compra {compra_id} no encontrado")
+                return
+
+            # Obtener órdenes asociadas
+            ordenes_detalle = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.compra_id == compra_id
+            ).all()
+
+            ordenes = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden.in_([o.id_orden for o in ordenes_detalle])
+            ).all()
+
+            # Obtener cotización desde la primera orden
+            id_cotizacion = ordenes[0].id_cotizacion if ordenes else None
+            id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones if ordenes else None
+
+            # Guardar datos para auditoría
+            datos_anteriores = {
+                'moneda': registro.moneda,
+                'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
+                'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
+                'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
+                'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
+                'tipo_empresa': registro.tipo_empresa
+            }
+
+            # Eliminar detalles de registro_compra_ordenes
             self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.compra_id == compra_id
             ).delete()
@@ -223,6 +306,17 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
             self.db.commit()
             logger.info(f"Registro de compra {compra_id} eliminado completamente")
+
+            # Registrar auditoría
+            auditoria_service = RegistroCompraAuditoriaService(self.db)
+            auditoria_service.registrar_eliminacion_registro(
+                compra_id=compra_id,
+                id_cotizacion=id_cotizacion,
+                id_cotizacion_versiones=id_cotizacion_versiones,
+                datos_anteriores=datos_anteriores,
+                ordenes=ordenes,
+                razon="No quedan órdenes de compra asociadas"
+            )
 
         except Exception as e:
             self.db.rollback()

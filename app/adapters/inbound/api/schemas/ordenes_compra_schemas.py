@@ -28,6 +28,9 @@ class ProductoUpdateInfo(BaseModel):
   igv: str = Field(..., description="IGV (CON IGV / SIN IGV)")
   eliminar: bool = Field(False, description="Si es true, marca el producto para eliminar")
 
+  class Config:
+    populate_by_name = True  # Permite usar tanto el nombre del campo como el alias
+
 
 class Data(BaseModel):
   proveedorInfo: ProveedorInfo = Field(..., description="Información del proveedor")
@@ -50,8 +53,8 @@ class ProductoOrdenResponse(BaseModel):
   modelo: str = Field(..., description="Modelo del producto")
   unidadMedida: str = Field(..., description="Unidad de medida")
   cantidad: int = Field(..., description="Cantidad")
-  precioUnitario: float = Field(..., description="Precio unitario")
-  precioTotal: float = Field(..., description="Precio total")
+  pUnitario: float = Field(..., description="Precio unitario")
+  ptotal: float = Field(..., description="Precio total")
   igv: str = Field(..., description="IGV (CON IGV / SIN IGV)")
 
 class ProveedorOrdenResponse(BaseModel):
@@ -67,14 +70,12 @@ class ProveedorOrdenResponse(BaseModel):
 class OrdenCompraDetalleResponse(BaseModel):
   idOrden: int = Field(..., description="ID de la orden")
   numeroOc: str = Field(..., description="Número de OC")
-  idCotizacion: int = Field(..., description="ID de cotización")
-  idVersion: int = Field(..., description="ID de versión")
-  fecha: str = Field(..., description="Fecha de creación")
   moneda: str = Field(..., description="Moneda")
   pago: str = Field(..., description="Forma de pago")
+  total: float = Field(..., description="Total")
   entrega: Optional[str] = Field(None, description="Condiciones de entrega")
-  total: float = Field(..., description="Total de la orden")
-  rutaS3: Optional[str] = Field(None, description="URL del archivo en S3")
+  rutaS3Antigua: Optional[str] = Field(None, description="URL del archivo en S3")
+  consorcio: bool = Field(False, description="Si es consorcio")
   proveedor: ProveedorOrdenResponse = Field(..., description="Datos del proveedor")
   productos: List[ProductoOrdenResponse] = Field(..., description="Lista de productos")
 

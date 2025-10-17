@@ -7,7 +7,6 @@ from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
 from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import ActualizarOrdenCompraRequest
-from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
 
 logger = logging.getLogger(__name__)
 
@@ -50,11 +49,14 @@ class ActualizarOrdenCompra:
             file_storage: Servicio de almacenamiento de archivos
             s3_service: Servicio de S3 (opcional, se crea uno nuevo si no se proporciona)
         """
+        from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
+
         self.ordenes_compra_repo = ordenes_compra_repo
         self.excel_generator = excel_generator
         self.file_storage = file_storage
         self.s3_service = s3_service or S3Service()
         self.bucket = os.getenv('AWS_BUCKET_NAME', 'corpelima-bucket')
+        self.event_dispatcher = get_event_dispatcher()
 
     async def execute(self, request: ActualizarOrdenCompraRequest) -> dict:
         """
@@ -229,6 +231,60 @@ class ActualizarOrdenCompra:
             # 8. Actualizar ruta S3 en la BD
             self.ordenes_compra_repo.actualizar_ruta_s3(request.idOrden, nueva_url_s3)
             logger.info("Ruta S3 actualizada en la base de datos")
+
+            # 9. Registrar auditoría de actualización de orden
+            from app.dependencies import get_db
+            from app.adapters.outbound.database.repositories.ordenes_compra_repository import _handle_orden_compra_evento
+            from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+            from app.adapters.outbound.database.models.registro_compra_orden_model import RegistroCompraOrdenModel
+
+            db = next(get_db())
+            try:
+                # Verificar si la orden tiene registro de compra
+                registro_orden = db.query(RegistroCompraOrdenModel).filter(
+                    RegistroCompraOrdenModel.id_orden == request.idOrden
+                ).first()
+
+                compra_id = registro_orden.compra_id if registro_orden else None
+
+                # Preparar descripción de cambios
+                cambios = []
+                if productos_eliminados > 0:
+                    cambios.append(f"{productos_eliminados} eliminados")
+                if productos_actualizados > 0:
+                    cambios.append(f"{productos_actualizados} actualizados")
+                if productos_creados > 0:
+                    cambios.append(f"{productos_creados} creados")
+                cambios_detalle = ", ".join(cambios)
+
+                # Registrar auditoría
+                auditoria_service = RegistroCompraAuditoriaService(db)
+                auditoria_service.registrar_actualizacion_orden(
+                    id_orden=request.idOrden,
+                    numero_oc=numero_oc,
+                    id_cotizacion=orden.id_cotizacion,
+                    id_cotizacion_versiones=orden.id_cotizacion_versiones,
+                    monto_anterior=0.0,  # No tenemos el monto anterior, se puede mejorar
+                    monto_nuevo=float(total_orden),
+                    cambios_detalle=cambios_detalle,
+                    compra_id=compra_id
+                )
+
+                # Disparar evento para recalcular registro de compra
+                self.event_dispatcher.publish(
+                    session=db,
+                    event_data={
+                        'tipo_evento': 'ORDEN_COMPRA_EDITADA',
+                        'id_cotizacion_nueva': orden.id_cotizacion,
+                        'id_cotizacion_versiones': orden.id_cotizacion_versiones,
+                        'cambio_cotizacion': False
+                    },
+                    handler=_handle_orden_compra_evento
+                )
+                db.commit()
+                logger.info("✅ Auditoría registrada y evento disparado para actualizar registro de compra")
+            finally:
+                db.close()
 
             return {
                 "status": "success",

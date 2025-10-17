@@ -1,5 +1,3 @@
-from abc import ABC
-
 from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 import os
@@ -31,7 +29,7 @@ def _normalize_filename(filename: str) -> str:
     return f"{name}.{ext}" if ext else name
 
 
-class AWSFileStorage(FileStoragePort, ABC):
+class AWSFileStorage(FileStoragePort):
     def __init__(self, bucket_name: str = 'bucketcorpe', region: str = 'us-east-1'):
         self.bucket_name = bucket_name
         self.region = region
@@ -57,8 +55,8 @@ class AWSFileStorage(FileStoragePort, ABC):
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
 
-    async def saveS3(self, file_content: bytes, filename: str) -> str:
-        """Alias para save - guarda un archivo en S3 y devuelve su URL"""
+    async def save_s3(self, file_content: bytes, filename: str) -> str:
+        """Guarda un archivo en S3 y devuelve su URL (implementación del método abstracto)"""
         return await self.save(file_content, filename)
 
     async def save_multiple(self, files: dict[str, bytes]) -> List[str]:
