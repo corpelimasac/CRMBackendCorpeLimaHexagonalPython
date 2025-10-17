@@ -2,6 +2,7 @@ import boto3
 import os
 from typing import Optional
 from botocore.exceptions import ClientError
+from urllib.parse import unquote
 import logging
 
 logger = logging.getLogger(__name__)
@@ -10,6 +11,7 @@ logger = logging.getLogger(__name__)
 def _extract_key_from_url(s3_url: str, bucket: str) -> Optional[str]:
     """
     Extrae la clave (key) del archivo desde una URL de S3.
+    Maneja URLs con espacios (archivos antiguos) y con guiones bajos (archivos nuevos).
 
     Args:
         s3_url (str): URL completa del archivo en S3
@@ -22,21 +24,29 @@ def _extract_key_from_url(s3_url: str, bucket: str) -> Optional[str]:
         # Formato esperado: https://bucket.s3.region.amazonaws.com/path/to/file
         # o https://s3.region.amazonaws.com/bucket/path/to/file
 
+        # Primero, aplicar URL decode a toda la URL para manejar %20 y otros caracteres codificados
+        s3_url_decoded = unquote(s3_url)
+
         # Eliminar el protocolo
-        url_without_protocol = s3_url.replace("https://", "").replace("https://", "")
+        url_without_protocol = s3_url_decoded.replace("https://", "").replace("http://", "")
 
         # Caso 1: bucket.s3.region.amazonaws.com/key
         if url_without_protocol.startswith(f"{bucket}.s3."):
             parts = url_without_protocol.split("/", 1)
             if len(parts) > 1:
-                return parts[1]
+                key = parts[1]
+                logger.info(f"Key extraída de URL: '{key}'")
+                return key
 
         # Caso 2: s3.region.amazonaws.com/bucket/key
         elif "s3." in url_without_protocol and url_without_protocol.startswith("s3."):
             parts = url_without_protocol.split("/")
             if len(parts) > 2 and parts[1] == bucket:
-                return "/".join(parts[2:])
+                key = "/".join(parts[2:])
+                logger.info(f"Key extraída de URL: '{key}'")
+                return key
 
+        logger.warning(f"No se pudo extraer key de la URL. URL procesada: {url_without_protocol}")
         return None
     except Exception as e:
         logger.error(f"Error al extraer clave de URL: {e}")
@@ -92,6 +102,7 @@ class S3Service:
     def delete_file(self, s3_key: str, bucket: str) -> bool:
         """
         Elimina un archivo de S3 usando la clave del archivo.
+        Intenta eliminar con la key original y, si falla, con versiones normalizadas.
 
         Args:
             s3_key (str): Clave del archivo en S3 (path dentro del bucket)
@@ -104,10 +115,22 @@ class S3Service:
             ClientError: Si hay un error al eliminar el archivo
         """
         try:
+            # Intentar eliminar con la key original
             self.s3_client.delete_object(Bucket=bucket, Key=s3_key)
             logger.info(f"Archivo eliminado exitosamente de S3: {s3_key} del bucket {bucket}")
             return True
         except ClientError as e:
+            # Si falla, intentar con versión normalizada (espacios por guiones bajos)
+            if ' ' in s3_key:
+                try:
+                    s3_key_normalized = s3_key.replace(' ', '_')
+                    logger.info(f"Intentando eliminar con key normalizada: {s3_key_normalized}")
+                    self.s3_client.delete_object(Bucket=bucket, Key=s3_key_normalized)
+                    logger.info(f"Archivo eliminado con key normalizada: {s3_key_normalized}")
+                    return True
+                except ClientError as e2:
+                    logger.error(f"Error al eliminar archivo con key normalizada: {e2}")
+
             logger.error(f"Error al eliminar archivo de S3: {e}")
             raise
 

@@ -74,8 +74,12 @@ class EliminarOrdenCompra:
                     s3_deleted = True
                     logger.info(f"Archivo eliminado exitosamente de S3")
                 except Exception as e:
-                    logger.warning(f"No se pudo eliminar el archivo de S3: {e}")
-                    # No lanzamos error aquí, continuamos con la eliminación de la BD
+                    logger.error(f"Error al eliminar archivo de S3: {e}")
+                    # IMPORTANTE: Si falla la eliminación de S3, NO continuar con la BD
+                    raise HTTPException(
+                        status_code=500,
+                        detail=f"No se pudo eliminar el archivo de S3. La orden no fue eliminada. Error: {str(e)}"
+                    )
             else:
                 logger.info("La orden no tiene archivo asociado en S3")
 

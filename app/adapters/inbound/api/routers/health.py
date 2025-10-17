@@ -18,7 +18,7 @@ async def health_check():
     """
     return {
         "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat(),
+        "timestamp": datetime.now().isoformat(),
         "version": settings.version,
         "app_name": settings.app_name,
         "environment": settings.environment,
@@ -37,11 +37,11 @@ async def database_health():
         return {
             "status": "healthy",
             "database": "connected",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now().isoformat()
         }
     else:
         return {
             "status": "unhealthy",
             "database": "not connected",
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.now().isoformat()
         }

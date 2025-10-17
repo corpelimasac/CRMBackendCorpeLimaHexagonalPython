@@ -5,7 +5,24 @@ from openpyxl.utils import get_column_letter
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 
 from openpyxl.drawing.image import Image
-from datetime import datetime
+
+
+def _normalize_proveedor_name(proveedor: str) -> str:
+    """
+    Normaliza el nombre del proveedor para que sea seguro en URLs:
+    - Elimina espacios al inicio y al final
+    - Reemplaza espacios múltiples internos por un solo guión bajo
+    - Conserva TODAS las palabras (S.A.C, E.I.R.L, etc.)
+    """
+    # Normalizar espacios: eliminar espacios al inicio/final
+    proveedor = proveedor.strip()
+
+    # Reemplazar espacios múltiples internos por un solo espacio y luego por guión bajo
+    proveedor = ' '.join(proveedor.split())
+
+    # Reemplazar todos los espacios por guiones bajos
+    return proveedor.replace(' ', '_')
+
 
 class Generador:
     def __init__(self, num_orden, oc, proveedor, igv, output_folder=None,consorcio=False): 
@@ -47,52 +64,17 @@ class Generador:
         self.image_height = 150  # Alto en píxeles
         self.image_position = "D1"  # Posición en Excel (ej: "D1")
 
-       
-        
-        # Truncar el nombre del proveedor para evitar nombres de archivo muy largos
-        proveedor_truncado = self._truncate_proveedor_name(proveedor)
-        self.output_file = f"{num_orden} {proveedor_truncado}.xlsx"
+
+
+        # Normalizar el nombre del proveedor para evitar espacios en URLs
+        proveedor_normalizado = _normalize_proveedor_name(proveedor)
+        # Normalizar el número de orden también (eliminar espacios múltiples)
+        num_orden_normalizado = '_'.join(num_orden.strip().split())
+        self.output_file = f"{num_orden_normalizado}_{proveedor_normalizado}.xlsx"
         self.subTitle=f"ORDEN DE COMPRA N° {num_orden}"
         self.wb = Workbook()
         self.ws = self.wb.active
-        self.last_product_row = None 
-
-    def _truncate_proveedor_name(self, proveedor: str, max_length: int = 30) -> str:
-        """
-        Trunca el nombre del proveedor de manera inteligente para evitar nombres de archivo muy largos.
-        Mantiene las palabras más importantes y limita la longitud total.
-        """
-        if len(proveedor) <= max_length:
-            return proveedor
-        
-        # Dividir por palabras y filtrar palabras menos importantes
-        palabras = proveedor.split()
-        palabras_filtradas = []
-        
-        # Palabras que se pueden omitir para acortar el nombre
-        palabras_a_omitir = {
-            'S.A.C.', 'S.A.C', 'S.A.', 'S.A', 'S.R.L.', 'S.R.L', 'E.I.R.L.', 'E.I.R.L',
-            'SOCIEDAD', 'ANONIMA', 'CERRADA', 'LIMITADA', 'EMPRESA', 'INDIVIDUAL', 
-            'RESPONSABILIDAD', 'DE', 'LA', 'EL', 'LOS', 'LAS', 'Y', 'CON', 'PARA',
-            'COMERCIALIZADORA', 'DISTRIBUIDORA', 'IMPORTADORA', 'EXPORTADORA'
-        }
-        
-        # Primero agregar palabras importantes (las primeras y las que no están en la lista)
-        for palabra in palabras:
-            palabra_upper = palabra.upper().strip('.,')
-            if palabra_upper not in palabras_a_omitir or len(palabras_filtradas) < 3:
-                palabras_filtradas.append(palabra)
-                # Si ya alcanzamos una longitud razonable, parar
-                if len(' '.join(palabras_filtradas)) >= max_length - 5:
-                    break
-        
-        nombre_truncado = ' '.join(palabras_filtradas)
-        
-        # Si aún es muy largo, truncar directamente
-        if len(nombre_truncado) > max_length:
-            nombre_truncado = nombre_truncado[:max_length-3] + "..."
-        
-        return nombre_truncado 
+        self.last_product_row = None
 
     def aplicar_estilo_fondo(self):
         white_fill = PatternFill(start_color="FFFFFF", end_color="FFFFFF", fill_type="solid")
@@ -229,7 +211,7 @@ class Generador:
     def agregar_total(self):
         if not self.last_product_row:
             self.last_product_row = 18
-            
+
         # Determinar formato de contabilidad según moneda
         if self.moneda.upper() == "DOLARES":
             currency_format = '"$"#,##0.00'  # Formato para dólares
@@ -237,7 +219,6 @@ class Generador:
             currency_format = '"S/."#,##0.00;[Red]"S/."#,##0.00'
             
         total_row = self.last_product_row + 1
-        right_alignment = Alignment(horizontal='right', vertical='center')
         center_alignment = Alignment(horizontal='center', vertical='center')
         
         # Crear celdas de totales
@@ -334,19 +315,19 @@ class Generador:
             # Configurar el tamaño de la imagen si se especifica
             if self.image_width and self.image_height:
                 # Convertir píxeles a puntos (1 píxel ≈ 0.75 puntos)
-                width_pt = self.image_width * 1.80
-                height_pt = self.image_height * 0.75
+                width_pt = int(self.image_width * 1.80)
+                height_pt = int(self.image_height * 0.75)
                 img.width = width_pt
                 img.height = height_pt
                 ##print(f"Imagen configurada con tamaño: {self.image_width}x{self.image_height} píxeles ({width_pt:.1f}x{height_pt:.1f} puntos)")
             elif self.image_width:
                 # Solo ancho especificado, mantener proporción
-                width_pt = self.image_width * 0.75
+                width_pt = int(self.image_width * 0.75)
                 img.width = width_pt
                 #print(f"Imagen configurada con ancho: {self.image_width} píxeles ({width_pt:.1f} puntos)")
             elif self.image_height:
                 # Solo alto especificado, mantener proporción
-                height_pt = self.image_height * 0.75
+                height_pt = int(self.image_height * 0.75)
                 img.height = height_pt
                 #print(f"Imagen configurada con alto: {self.image_height} píxeles ({height_pt:.1f} puntos)")
             else:

@@ -57,6 +57,8 @@ async def obtener_ruc(
         
     Raises:
         HTTPException: Si hay errores en la consulta
+        :param ruc:
+        :param use_case:
     """
     try:
         resultado = await use_case.obtener_ruc(ruc)

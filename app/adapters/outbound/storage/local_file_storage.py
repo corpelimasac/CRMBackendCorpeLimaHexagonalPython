@@ -30,7 +30,7 @@ class LocalFileStorageAdapter(FileStoragePort):
             os.remove(file_path)
             
 
-    async def saveS3(self, file_content:bytes, filename:str) -> str:
+    async def save_s3(self, file_content:bytes, filename:str) -> str:
         pass
 
     

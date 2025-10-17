@@ -5,7 +5,7 @@ Equivalente a @TransactionalEventListener(phase = AFTER_COMMIT) de Spring Boot
 from sqlalchemy import event
 from sqlalchemy.orm import Session
 from concurrent.futures import ThreadPoolExecutor
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Tuple, Optional
 import logging
 
 logger = logging.getLogger(__name__)
@@ -160,7 +160,7 @@ class EventDispatcher:
 
 
 # Singleton global
-_event_dispatcher: EventDispatcher = None
+_event_dispatcher: Optional[EventDispatcher] = None
 
 
 def get_event_dispatcher() -> EventDispatcher:

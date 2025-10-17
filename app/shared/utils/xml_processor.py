@@ -63,31 +63,26 @@ class InvoiceExtractor:
             print('In XMLProcessor: No se encontró la COTIZACION.')
 
     def extract_num_fact(self):
-        # 1. Buscamos la etiqueta cbc:ID en el XML
-        fact= self.root.find('.//cbc:ID', self.namespaces)
+        """Extrae el número de factura del XML."""
+        fact = self._find_element_safe('.//cbc:ID', 'In XMLProcessor: No se encontró la etiqueta cbc:ID')
         if fact is not None:
-            # 2. Si encontramos la etiqueta, guardamos el texto
             self.fact = fact.text
-        else:
-            print('In XMLProcessor: No se encontró la etiqueta cbc:ID')
 
     def extract_fecha(self):
         """Extrae la fecha de <cbc:IssueDate>, la convierte a datetime,
         y la formatea como "DD de <Mes> del YYYY".
         """
-        # 1. Buscamos la etiqueta cbc:IssueDate en el XML
-        date = self.root.find('.//cbc:IssueDate', self.namespaces)
+        date = self._find_element_safe('.//cbc:IssueDate', 'No se encontró la etiqueta cbc:IssueDate')
         if date is not None:
             # Ajusta el formato de acuerdo con el formato de fecha en tu XML
-            fecha_objeto_xml = datetime.strptime(date.text, "%Y-%m-%d")  # Especifica el formato
+            fecha_objeto_xml = datetime.strptime(date.text, "%Y-%m-%d")
             dia_xml = fecha_objeto_xml.strftime("%d")  # Extrae el día
             mes_xml = fecha_objeto_xml.strftime("%B")  # Extrae el mes en formato textual (español)
             anio_xml = fecha_objeto_xml.strftime("%Y")  # Extrae el año
-            
+
             # Formatea la fecha como 'día de mes del año'
             self.date = f"{dia_xml} de {mes_xml} del {anio_xml}"
-        else:
-            print('No se encontró la etiqueta cbc:IssueDate')
+
 
     def extract_registration_name(self):
         """
@@ -98,19 +93,28 @@ class InvoiceExtractor:
                  └─ <cbc:RegistrationName>
         para obtener el nombre o razón social del cliente.
         """
-        # 1. Buscamos la etiqueta cac:AccountingCustomerParty en el XML
-        accounting_customer_party = self.root.find('.//cac:AccountingCustomerParty', self.namespaces)
-        if accounting_customer_party is not None:
-            # 2. Buscamos la etiqueta cac:PartyLegalEntity dentro de cac:AccountingCustomerParty
-            party_legal_entity = accounting_customer_party.find('.//cac:PartyLegalEntity', self.namespaces)
-            if party_legal_entity is not None:
-                # 3. Buscamos la etiqueta cbc:RegistrationName dentro de cac:PartyLegalEntity
-                registration_name_element = party_legal_entity.find('cbc:RegistrationName', self.namespaces)
-                self.registration_name = registration_name_element.text if registration_name_element is not None else 'No disponible'
-            else:
-                print('No se encontró la etiqueta cac:PartyLegalEntity')
-        else:
-            print('No se encontró la etiqueta cac:AccountingCustomerParty')
+        accounting_customer_party = self._find_element_safe(
+            './/cac:AccountingCustomerParty',
+            'No se encontró la etiqueta cac:AccountingCustomerParty'
+        )
+        if accounting_customer_party is None:
+            self.registration_name = 'No disponible'
+            return
+
+        party_legal_entity = self._find_element_from_parent(
+            accounting_customer_party,
+            './/cac:PartyLegalEntity',
+            'No se encontró la etiqueta cac:PartyLegalEntity'
+        )
+        if party_legal_entity is None:
+            self.registration_name = 'No disponible'
+            return
+
+        registration_name_element = self._find_element_from_parent(
+            party_legal_entity,
+            'cbc:RegistrationName'
+        )
+        self.registration_name = registration_name_element.text if registration_name_element is not None else 'No disponible'
 
     def extract_invoice_lines(self):
         """
@@ -131,6 +135,39 @@ class InvoiceExtractor:
             und = self._get_element_text(line, 'cbc:Note')
             description_value = self._get_item_description(line)
             self.detalles.append((cant, und, description_value))
+
+    def _find_element_safe(self, xpath, error_message=None):
+        """
+        Método privado para buscar un elemento XML de forma segura desde la raíz.
+
+        Args:
+            xpath: Ruta XPath del elemento a buscar
+            error_message: Mensaje a imprimir si no se encuentra (opcional)
+
+        Returns:
+            El elemento encontrado o None si no existe
+        """
+        element = self.root.find(xpath, self.namespaces)
+        if element is None and error_message:
+            print(error_message)
+        return element
+
+    def _find_element_from_parent(self, parent_element, xpath, error_message=None):
+        """
+        Método privado para buscar un elemento XML desde un elemento padre.
+
+        Args:
+            parent_element: Elemento padre desde donde buscar
+            xpath: Ruta XPath del elemento a buscar
+            error_message: Mensaje a imprimir si no se encuentra (opcional)
+
+        Returns:
+            El elemento encontrado o None si no existe
+        """
+        element = parent_element.find(xpath, self.namespaces)
+        if element is None and error_message:
+            print(error_message)
+        return element
 
     def _get_element_text(self, element, tag):
         """Método auxiliar para obtener el texto de un elemento XML seguro."""

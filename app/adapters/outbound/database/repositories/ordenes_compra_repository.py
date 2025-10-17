@@ -384,7 +384,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
     def eliminar_orden(self, id_orden: int) -> bool:
         """
-        Elimina una orden de compra y sus detalles asociados
+        Elimina una orden de compra y todos sus registros asociados
 
         Args:
             id_orden (int): ID de la orden de compra
@@ -395,6 +395,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         Raises:
             ValueError: Si la orden no existe
         """
+        from app.adapters.outbound.database.models.registro_compra_orden_model import RegistroCompraOrdenModel
+
         try:
             # Verificar que la orden existe
             orden = (
@@ -406,12 +408,22 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             if not orden:
                 raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
 
-            # Eliminar detalles de la orden primero (debido a FK)
-            self.db.query(OrdenesCompraDetallesModel).filter(
+            # 1. Eliminar registro_compra_ordenes primero (FK a ordenes_compra)
+            deleted_registros = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.id_orden == id_orden
+            ).delete()
+
+            if deleted_registros > 0:
+                logger.info(f"Eliminados {deleted_registros} registros de compra asociados")
+
+            # 2. Eliminar detalles de la orden (FK a ordenes_compra)
+            deleted_detalles = self.db.query(OrdenesCompraDetallesModel).filter(
                 OrdenesCompraDetallesModel.id_orden == id_orden
             ).delete()
 
-            # Eliminar la orden
+            logger.info(f"Eliminados {deleted_detalles} detalles de la orden")
+
+            # 3. Eliminar la orden
             self.db.query(OrdenesCompraModel).filter(
                 OrdenesCompraModel.id_orden == id_orden
             ).delete()
