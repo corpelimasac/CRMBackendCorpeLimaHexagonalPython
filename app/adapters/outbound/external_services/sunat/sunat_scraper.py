@@ -209,6 +209,7 @@ class SunatScrapper:
         # Extraer datos y poblar DTO
         self._extraer_datos_basicos(page, dto)
         _extraer_trabajadores(page, dto)
+        page.wait_for_timeout(1000)
         self._extraer_representantes_legales(page, dto)
 
         context.close()
@@ -276,25 +277,31 @@ class SunatScrapper:
     """Extrae información del representante legal"""
     try:
       boton_representantes_loc = page.locator('.btnInfRepLeg')
+      print("Buscando botón de Representantes Legales...")
 
-      if boton_representantes_loc.is_visible():
-          boton_representantes_loc.click()
-          page.wait_for_load_state('networkidle')
+      boton_representantes_loc.click(timeout=5000) 
 
-          if page.locator('table.table').is_visible():
-              primera_fila = page.locator('table.table tbody tr').first
+        # Si el click tuvo éxito, esperamos a que la nueva información cargue.
+      page.wait_for_load_state('networkidle', timeout=10000)
+      tabla_representantes_loc = page.locator('table.table')
+      tabla_representantes_loc.wait_for(state='visible', timeout=5000)
+      primera_fila = tabla_representantes_loc.locator('tbody tr').first
+        
+      dto.representante_legal = RepresentanteLegalDTO(
+            tipo_documento=primera_fila.locator('td').nth(0).text_content().strip(),
+            nro_documento=primera_fila.locator('td').nth(1).text_content().strip(),
+            nombre=primera_fila.locator('td').nth(2).text_content().strip(),
+            cargo=primera_fila.locator('td').nth(3).text_content().strip(),
+            fecha_desde=primera_fila.locator('td').nth(4).text_content().strip()
+        )
+      print("Representante legal extraído con éxito.")
 
-              dto.representante_legal = RepresentanteLegalDTO(
-                  tipo_documento=primera_fila.locator('td').nth(0).text_content().strip(),
-                  nro_documento=primera_fila.locator('td').nth(1).text_content().strip(),
-                  nombre=primera_fila.locator('td').nth(2).text_content().strip(),
-                  cargo=primera_fila.locator('td').nth(3).text_content().strip(),
-                  fecha_desde=primera_fila.locator('td').nth(4).text_content().strip()
-              )
-      else:
-          print("No tiene botón de representantes legales")
+    except TimeoutError:
+        # Esto es normal si el RUC no tiene representantes legales visibles.
+        # El error ocurre porque el .click() esperó 5 segundos y el botón nunca apareció.
+        print("No se encontró el botón de Representantes Legales. Se asume que no existe para este RUC.")
     except Exception as e:
-      print(f"Error al extraer representantes legales: {e}")
-
+        # Captura cualquier otro error inesperado durante la extracción.
+        print(f"Error inesperado al extraer representantes legales: {e}")
 
     
