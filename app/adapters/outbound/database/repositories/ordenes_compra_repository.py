@@ -422,27 +422,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             tenia_registro = registro_orden is not None
             compra_id = registro_orden.compra_id if registro_orden else None
 
-            # 1. Eliminar registro_compra_ordenes primero (FK a ordenes_compra)
-            deleted_registros = self.db.query(RegistroCompraOrdenModel).filter(
-                RegistroCompraOrdenModel.id_orden == id_orden
-            ).delete()
-
-            if deleted_registros > 0:
-                logger.info(f"Eliminados {deleted_registros} registros de compra asociados")
-
-            # 2. Eliminar detalles de la orden (FK a ordenes_compra)
-            deleted_detalles = self.db.query(OrdenesCompraDetallesModel).filter(
-                OrdenesCompraDetallesModel.id_orden == id_orden
-            ).delete()
-
-            logger.info(f"Eliminados {deleted_detalles} detalles de la orden")
-
-            # 3. Eliminar la orden
-            self.db.query(OrdenesCompraModel).filter(
-                OrdenesCompraModel.id_orden == id_orden
-            ).delete()
-
-            # 4. Registrar auditoría de eliminación de orden
+            # 1. Registrar auditoría ANTES de eliminar (mientras la orden aún existe)
             from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
             auditoria_service = RegistroCompraAuditoriaService(self.db)
             auditoria_service.registrar_eliminacion_orden(
@@ -454,6 +434,26 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 tenia_registro=tenia_registro,
                 compra_id=compra_id
             )
+
+            # 2. Eliminar registro_compra_ordenes primero (FK a ordenes_compra)
+            deleted_registros = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.id_orden == id_orden
+            ).delete()
+
+            if deleted_registros > 0:
+                logger.info(f"Eliminados {deleted_registros} registros de compra asociados")
+
+            # 3. Eliminar detalles de la orden (FK a ordenes_compra)
+            deleted_detalles = self.db.query(OrdenesCompraDetallesModel).filter(
+                OrdenesCompraDetallesModel.id_orden == id_orden
+            ).delete()
+
+            logger.info(f"Eliminados {deleted_detalles} detalles de la orden")
+
+            # 4. Eliminar la orden
+            self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == id_orden
+            ).delete()
 
             # 5. Disparar evento para recalcular registro de compra
             self.event_dispatcher.publish(
@@ -476,7 +476,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al eliminar orden de compra {id_orden}: {e}")
             raise
 
-    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None) -> bool:
+    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None, auto_commit: bool = True) -> bool:
         """
         Actualiza los campos básicos de una orden de compra
 
@@ -485,6 +485,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             moneda (str, optional): Nueva moneda
             pago (str, optional): Nueva forma de pago
             entrega (str, optional): Nuevas condiciones de entrega
+            auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
             bool: True si se actualizó correctamente
@@ -510,12 +511,14 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             if entrega is not None:
                 orden.entrega = entrega
 
-            self.db.commit()
+            if auto_commit:
+                self.db.commit()
             logger.info(f"Orden de compra {id_orden} actualizada exitosamente")
             return True
 
         except Exception as e:
-            self.db.rollback()
+            if auto_commit:
+                self.db.rollback()
             logger.error(f"Error al actualizar orden de compra {id_orden}: {e}")
             raise
 
@@ -541,7 +544,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al obtener detalles de orden {id_orden}: {e}")
             raise
 
-    def actualizar_detalle_producto(self, id_oc_detalle: int, cantidad: int, precio_unitario: float, precio_total: float) -> bool:
+    def actualizar_detalle_producto(self, id_oc_detalle: int, cantidad: int, precio_unitario: float, precio_total: float, auto_commit: bool = True) -> bool:
         """
         Actualiza un detalle de producto existente
 
@@ -550,6 +553,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             cantidad (int): Nueva cantidad
             precio_unitario (float): Nuevo precio unitario
             precio_total (float): Nuevo precio total
+            auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
             bool: True si se actualizó correctamente
@@ -571,16 +575,18 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             detalle.precio_unitario = precio_unitario
             detalle.precio_total = precio_total
 
-            self.db.commit()
+            if auto_commit:
+                self.db.commit()
             logger.info(f"Detalle {id_oc_detalle} actualizado exitosamente")
             return True
 
         except Exception as e:
-            self.db.rollback()
+            if auto_commit:
+                self.db.rollback()
             logger.error(f"Error al actualizar detalle {id_oc_detalle}: {e}")
             raise
 
-    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float) -> Any:
+    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float, auto_commit: bool = True) -> Any:
         """
         Crea un nuevo detalle de producto
 
@@ -590,6 +596,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             cantidad (int): Cantidad
             precio_unitario (float): Precio unitario
             precio_total (float): Precio total
+            auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
             Any: Detalle creado
@@ -604,23 +611,26 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             )
 
             self.db.add(nuevo_detalle)
-            self.db.commit()
-            self.db.refresh(nuevo_detalle)
+            if auto_commit:
+                self.db.commit()
+                self.db.refresh(nuevo_detalle)
 
             logger.info(f"Nuevo detalle creado para orden {id_orden}, producto {id_producto}")
             return nuevo_detalle
 
         except Exception as e:
-            self.db.rollback()
+            if auto_commit:
+                self.db.rollback()
             logger.error(f"Error al crear detalle: {e}")
             raise
 
-    def eliminar_detalle_producto(self, id_oc_detalle: int) -> bool:
+    def eliminar_detalle_producto(self, id_oc_detalle: int, auto_commit: bool = True) -> bool:
         """
         Elimina un detalle de producto
 
         Args:
             id_oc_detalle (int): ID del detalle de la orden
+            auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
             bool: True si se eliminó correctamente
@@ -639,13 +649,15 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 raise ValueError(f"Detalle de orden con ID {id_oc_detalle} no encontrado")
 
             self.db.delete(detalle)
-            self.db.commit()
+            if auto_commit:
+                self.db.commit()
 
             logger.info(f"Detalle {id_oc_detalle} eliminado exitosamente")
             return True
 
         except Exception as e:
-            self.db.rollback()
+            if auto_commit:
+                self.db.rollback()
             logger.error(f"Error al eliminar detalle {id_oc_detalle}: {e}")
             raise
 

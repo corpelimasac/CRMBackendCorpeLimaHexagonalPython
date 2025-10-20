@@ -1,5 +1,6 @@
-from sqlalchemy import Column, Date, Numeric, String, BIGINT
+from sqlalchemy import Column, Date, Numeric, String, BIGINT, DateTime, func
 from sqlalchemy.orm import relationship
+from datetime import datetime, date
 from .base import Base
 
 
@@ -16,6 +17,9 @@ class RegistroCompraModel(Base):
 
     # Fecha de la orden de compra (fecha actual cuando se genera el registro)
     fecha_orden_compra = Column(Date, nullable=False, comment="Fecha cuando se generó el registro de compra")
+
+    # Fecha de cambio - campo opcional para tracking de cambios
+    fecha_cambio = Column(Date, nullable=True, comment="Fecha del último cambio en el registro")
 
     # Moneda
     moneda = Column(

@@ -4,6 +4,7 @@ from app.adapters.outbound.database.models.registro_compra_orden_model import Re
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 from sqlalchemy.orm import Session
 from typing import List, Optional
+from datetime import date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -60,6 +61,71 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
         except Exception as e:
             logger.error(f"Error al obtener registro de compra: {e}")
+            raise
+
+    def obtener_registro_huerfano_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> Optional[RegistroCompraModel]:
+        """
+        Busca un registro de compra huérfano (sin órdenes activas) para una cotización.
+
+        Esto ocurre cuando se eliminan TODAS las órdenes activas pero el registro_compra
+        aún existe. Busca en la tabla de auditoría para encontrar el compra_id asociado
+        a esta cotización.
+
+        Args:
+            id_cotizacion: ID de la cotización
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional)
+
+        Returns:
+            RegistroCompraModel: Registro huérfano encontrado o None
+        """
+        try:
+            from app.adapters.outbound.database.models.registro_compra_auditoria_model import RegistroCompraAuditoriaModel
+
+            # Buscar en la tabla de auditoría para encontrar el compra_id
+            # asociado a esta cotización (buscamos el último registro de auditoría)
+            query = self.db.query(RegistroCompraAuditoriaModel.compra_id).filter(
+                RegistroCompraAuditoriaModel.id_cotizacion == id_cotizacion,
+                RegistroCompraAuditoriaModel.tipo_entidad == 'ORDEN_COMPRA',
+                RegistroCompraAuditoriaModel.compra_id.isnot(None)
+            )
+
+            if id_cotizacion_versiones is not None:
+                query = query.filter(
+                    RegistroCompraAuditoriaModel.id_cotizacion_versiones == id_cotizacion_versiones
+                )
+
+            # Ordenar por fecha más reciente y obtener el compra_id
+            auditoria = query.order_by(RegistroCompraAuditoriaModel.fecha_evento.desc()).first()
+
+            if not auditoria:
+                logger.info(f"No se encontró registro de auditoría para cotización {id_cotizacion}")
+                return None
+
+            compra_id = auditoria[0]  # auditoria es una tupla (compra_id,)
+
+            # Verificar si ese registro aún existe
+            registro = self.db.query(RegistroCompraModel).filter(
+                RegistroCompraModel.compra_id == compra_id
+            ).first()
+
+            if registro:
+                # Verificar que realmente esté huérfano (sin órdenes en registro_compra_ordenes)
+                ordenes_count = self.db.query(RegistroCompraOrdenModel).filter(
+                    RegistroCompraOrdenModel.compra_id == compra_id
+                ).count()
+
+                if ordenes_count == 0:
+                    logger.info(f"✅ Registro huérfano encontrado: compra_id={compra_id} (sin órdenes asociadas)")
+                    return registro
+                else:
+                    logger.info(f"Registro {compra_id} encontrado pero NO está huérfano (tiene {ordenes_count} órdenes)")
+                    return None
+            else:
+                logger.info(f"Registro de compra {compra_id} ya fue eliminado")
+                return None
+
+        except Exception as e:
+            logger.error(f"Error al buscar registro huérfano: {e}", exc_info=True)
             raise
 
     def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> List[OrdenesCompraModel]:
@@ -157,6 +223,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.monto_sin_igv = datos_calculados['monto_sin_igv']
                 registro.fecha_orden_compra = datos_calculados['fecha_orden_compra']
                 registro.tipo_empresa = datos_calculados['tipo_empresa']
+                # Actualizar fecha de cambio
+                registro.fecha_cambio = date.today()
 
                 # Eliminar detalles anteriores de registro_compra_ordenes
                 self.db.query(RegistroCompraOrdenModel).filter(
@@ -254,7 +322,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
     def eliminar_registro(self, compra_id: int):
         """
-        Elimina un registro de compra completo
+        Elimina un registro de compra completo cuando no quedan órdenes asociadas.
+        Registra auditoría con todos los datos del registro y órdenes antes de eliminar.
 
         Args:
             compra_id: ID del registro de compra
@@ -271,43 +340,49 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 logger.warning(f"Registro de compra {compra_id} no encontrado")
                 return
 
-            # Obtener órdenes asociadas
+            # Obtener órdenes asociadas a través de registro_compra_ordenes
             ordenes_detalle = self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.compra_id == compra_id
             ).all()
 
-            ordenes = self.db.query(OrdenesCompraModel).filter(
-                OrdenesCompraModel.id_orden.in_([o.id_orden for o in ordenes_detalle])
-            ).all()
+            # Si hay órdenes asociadas, obtenerlas para la auditoría
+            ordenes = []
+            id_cotizacion = None
+            id_cotizacion_versiones = None
 
-            # Obtener cotización desde la primera orden
-            id_cotizacion = ordenes[0].id_cotizacion if ordenes else None
-            id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones if ordenes else None
+            if ordenes_detalle:
+                ordenes = self.db.query(OrdenesCompraModel).filter(
+                    OrdenesCompraModel.id_orden.in_([o.id_orden for o in ordenes_detalle])
+                ).all()
 
-            # Guardar datos para auditoría
+                # Obtener cotización desde la primera orden
+                if ordenes:
+                    id_cotizacion = ordenes[0].id_cotizacion
+                    id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones
+
+            # Guardar datos completos para auditoría
             datos_anteriores = {
+                'compra_id': compra_id,
+                'fecha_orden_compra': str(registro.fecha_orden_compra) if registro.fecha_orden_compra else None,
                 'moneda': registro.moneda,
                 'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
                 'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
                 'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
                 'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
-                'tipo_empresa': registro.tipo_empresa
+                'tipo_empresa': registro.tipo_empresa,
+                'cantidad_ordenes': len(ordenes),
+                'ordenes': [
+                    {
+                        'id_orden': o.id_orden,
+                        'numero_oc': o.correlative,
+                        'monto': float(o.total) if o.total else 0,
+                        'moneda': o.moneda
+                    }
+                    for o in ordenes
+                ]
             }
 
-            # Eliminar detalles de registro_compra_ordenes
-            self.db.query(RegistroCompraOrdenModel).filter(
-                RegistroCompraOrdenModel.compra_id == compra_id
-            ).delete()
-
-            # Eliminar registro principal
-            self.db.query(RegistroCompraModel).filter(
-                RegistroCompraModel.compra_id == compra_id
-            ).delete()
-
-            self.db.commit()
-            logger.info(f"Registro de compra {compra_id} eliminado completamente")
-
-            # Registrar auditoría
+            # 1. Registrar auditoría ANTES de eliminar (dentro de la misma transacción)
             auditoria_service = RegistroCompraAuditoriaService(self.db)
             auditoria_service.registrar_eliminacion_registro(
                 compra_id=compra_id,
@@ -315,10 +390,25 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 datos_anteriores=datos_anteriores,
                 ordenes=ordenes,
-                razon="No quedan órdenes de compra asociadas"
+                razon="No quedan órdenes de compra asociadas - Eliminación automática al eliminar última orden"
             )
+
+            # 2. Eliminar detalles de registro_compra_ordenes
+            deleted_detalles = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.compra_id == compra_id
+            ).delete()
+            logger.info(f"Eliminados {deleted_detalles} detalles de registro_compra_ordenes")
+
+            # 3. Eliminar registro principal
+            self.db.query(RegistroCompraModel).filter(
+                RegistroCompraModel.compra_id == compra_id
+            ).delete()
+
+            # 4. Commit de toda la transacción (eliminación + auditoría)
+            self.db.commit()
+            logger.info(f"✅ Registro de compra {compra_id} eliminado completamente y auditoría registrada")
 
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Error al eliminar registro de compra: {e}")
+            logger.error(f"Error al eliminar registro de compra {compra_id}: {e}", exc_info=True)
             raise

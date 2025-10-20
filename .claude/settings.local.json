@@ -13,7 +13,8 @@
       "mcp__mysql-local__mysql_describe_table",
       "mcp__mysql-local__mysql_query",
       "Bash(del \"C:\\Users\\Usuario\\Documents\\CRMBackendCorpeLimaHexagonalPython\\app\\adapters\\inbound\\api\\routers\\generar_oc.py\")",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "mcp__mysql-local__health_ping"
     ],
     "deny": [],
     "ask": []

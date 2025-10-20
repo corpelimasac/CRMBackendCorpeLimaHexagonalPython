@@ -58,16 +58,27 @@ class ProcesarRegistroCompra:
             id_cotizacion: ID de la cotización
             id_cotizacion_versiones: ID de la versión de cotización
         """
-        # Obtener todas las OC de esta cotización y versión
+        # Obtener todas las OC ACTIVAS de esta cotización y versión
         ordenes = self.registro_repo.obtener_ordenes_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
 
         if not ordenes:
-            logger.warning(f"No se encontraron órdenes para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
-            # Si no hay órdenes, eliminar registro si existe
-            registro_existente = self.registro_repo.obtener_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
+            logger.warning(f"No se encontraron órdenes activas para cotización {id_cotizacion} versión {id_cotizacion_versiones}")
+
+            # Buscar si existe un registro huérfano (puede tener referencias a órdenes inactivas)
+            registro_existente = self.registro_repo.obtener_registro_huerfano_por_cotizacion(
+                id_cotizacion, id_cotizacion_versiones
+            )
+
             if registro_existente:
-                logger.info(f"Eliminando registro sin órdenes para cotización {id_cotizacion}")
+                logger.info(
+                    f"📍 Registro huérfano encontrado (compra_id: {registro_existente.compra_id}) "
+                    f"para cotización {id_cotizacion} versión {id_cotizacion_versiones}. "
+                    f"Procediendo a eliminar registro completo..."
+                )
                 self.registro_repo.eliminar_registro(registro_existente.compra_id)
+            else:
+                logger.info(f"No existe registro de compra para eliminar (cotización {id_cotizacion})")
+
             return
 
         # Verificar si ya existe registro

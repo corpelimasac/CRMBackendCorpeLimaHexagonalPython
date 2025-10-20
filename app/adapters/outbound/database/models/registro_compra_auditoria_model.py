@@ -1,4 +1,5 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Numeric, BIGINT
+from sqlalchemy import Column, Integer, String, DateTime, Text, Numeric, BIGINT, ForeignKey
+from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
 
@@ -27,21 +28,24 @@ class RegistroCompraAuditoriaModel(Base):
                          comment="REGISTRO_COMPRA, ORDEN_COMPRA, REGISTRO_COMPRA_ORDEN")
 
     # IDs de las entidades involucradas
-    compra_id = Column(BIGINT, nullable=True, index=True,
-                      comment="ID del registro de compra (null si se eliminó)")
+    # NOTA: compra_id NO tiene FK porque es una tabla de auditoría histórica.
+    # El registro de compra puede ser eliminado pero la auditoría debe conservarse.
+    # El compra_id se mantiene como referencia histórica.
 
-    id_orden = Column(Integer, nullable=True, index=True,
-                     comment="ID de la orden de compra")
-
-    id_cotizacion = Column(Integer, nullable=True, index=True,
+    id_cotizacion = Column(BIGINT, ForeignKey("cotizacion.id_cotizacion"), nullable=True, index=True,
                           comment="ID de la cotización")
 
-    id_cotizacion_versiones = Column(Integer, nullable=True,
+    id_cotizacion_versiones = Column(BIGINT, ForeignKey("cotizaciones_versiones.id_cotizacion_versiones"), nullable=True,
                                      comment="ID de la versión de cotización")
 
     # Usuario que realizó el cambio (si está disponible)
-    id_usuario = Column(Integer, nullable=True,
+    id_usuario = Column(Integer, ForeignKey("usuarios.id_usuario"), nullable=True,
                        comment="ID del usuario que realizó el cambio")
+
+    # Relaciones
+    cotizacion = relationship("CotizacionModel", foreign_keys="[RegistroCompraAuditoriaModel.id_cotizacion]", backref="auditorias_compra")
+    cotizacion_version = relationship("CotizacionesVersionesModel", foreign_keys="[RegistroCompraAuditoriaModel.id_cotizacion_versiones]", backref="auditorias_compra")
+    usuario = relationship("UsuariosModel", foreign_keys="[RegistroCompraAuditoriaModel.id_usuario]", backref="auditorias_compra")
 
     # Datos antes del cambio (JSON)
     datos_anteriores = Column(Text, nullable=True,

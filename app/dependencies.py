@@ -90,6 +90,7 @@ def get_update_purchase_order_use_case(db: Session = Depends(get_db)) -> Actuali
         ordenes_compra_repo=ordenes_compra_repo,
         excel_generator=OpenPyXLExcelGenerator(ordenes_compra_repo),
         file_storage=AWSFileStorage(),
+        db=db,
         s3_service=s3_service
     )
 

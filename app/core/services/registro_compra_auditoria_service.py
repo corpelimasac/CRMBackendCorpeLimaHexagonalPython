@@ -35,6 +35,9 @@ class RegistroCompraAuditoriaService:
         """
         Registra la creación de un nuevo registro de compra.
 
+        IMPORTANTE: Este método NO hace commit. El commit debe ser manejado
+        por el repositorio que lo llama para mantener integridad transaccional.
+
         Args:
             compra_id: ID del registro de compra creado
             id_cotizacion: ID de la cotización
@@ -57,7 +60,6 @@ class RegistroCompraAuditoriaService:
                 fecha_evento=datetime.now(),
                 tipo_operacion="CREACION",
                 tipo_entidad="REGISTRO_COMPRA",
-                compra_id=compra_id,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 id_usuario=id_usuario,
@@ -71,13 +73,13 @@ class RegistroCompraAuditoriaService:
             )
 
             self.db.add(auditoria)
-            self.db.commit()
-            logger.info(f"Auditoria registrada: Creacion de registro {compra_id}")
+            # NO hacer commit aquí - dejar que el repositorio haga commit de toda la transacción
+            logger.info(f"Auditoria registrada (pendiente commit): Creacion de registro {compra_id}")
 
         except Exception as e:
             logger.error(f"Error al registrar auditoria de creacion: {e}", exc_info=True)
-            self.db.rollback()
-            # No re-lanzamos la excepcion para no interrumpir el flujo principal
+            # Re-lanzar la excepción para que el repositorio haga rollback de toda la transacción
+            raise
 
     def registrar_actualizacion_registro(
         self,
@@ -92,6 +94,9 @@ class RegistroCompraAuditoriaService:
     ) -> None:
         """
         Registra la actualización de un registro de compra.
+
+        IMPORTANTE: Este método NO hace commit. El commit debe ser manejado
+        por el repositorio que lo llama para mantener integridad transaccional.
 
         Args:
             compra_id: ID del registro actualizado
@@ -129,7 +134,6 @@ class RegistroCompraAuditoriaService:
                 fecha_evento=datetime.now(),
                 tipo_operacion="ACTUALIZACION",
                 tipo_entidad="REGISTRO_COMPRA",
-                compra_id=compra_id,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 id_usuario=id_usuario,
@@ -148,13 +152,13 @@ class RegistroCompraAuditoriaService:
             )
 
             self.db.add(auditoria)
-            self.db.commit()
-            logger.info(f"Auditoria registrada: Actualizacion de registro {compra_id}")
+            # NO hacer commit aquí - dejar que el repositorio haga commit de toda la transacción
+            logger.info(f"Auditoria registrada (pendiente commit): Actualizacion de registro {compra_id}")
 
         except Exception as e:
             logger.error(f"Error al registrar auditoria de actualizacion: {e}", exc_info=True)
-            self.db.rollback()
-            # No re-lanzamos la excepcion para no interrumpir el flujo principal
+            # Re-lanzar la excepción para que el repositorio haga rollback de toda la transacción
+            raise
 
     def registrar_eliminacion_registro(
         self,
@@ -169,11 +173,14 @@ class RegistroCompraAuditoriaService:
         """
         Registra la eliminación de un registro de compra.
 
+        IMPORTANTE: Este método NO hace commit. El commit debe ser manejado
+        por el repositorio que lo llama para mantener integridad transaccional.
+
         Args:
             compra_id: ID del registro eliminado
             id_cotizacion: ID de la cotización
             id_cotizacion_versiones: ID de la versión
-            datos_anteriores: Datos antes de eliminar
+            datos_anteriores: Datos antes de eliminar (dict completo con toda la info)
             ordenes: Órdenes que tenía el registro
             razon: Razón de la eliminación
             id_usuario: ID del usuario (opcional)
@@ -183,8 +190,9 @@ class RegistroCompraAuditoriaService:
             cantidad_ordenes = len(ordenes)
 
             descripcion = (
-                f"Registro de compra {compra_id} eliminado. "
+                f"Registro de compra {compra_id} eliminado completamente. "
                 f"Total eliminado: S/ {monto_anterior:,.2f}. "
+                f"Cantidad de órdenes asociadas: {cantidad_ordenes}. "
                 f"Razón: {razon}"
             )
 
@@ -192,7 +200,6 @@ class RegistroCompraAuditoriaService:
                 fecha_evento=datetime.now(),
                 tipo_operacion="ELIMINACION",
                 tipo_entidad="REGISTRO_COMPRA",
-                compra_id=compra_id,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 id_usuario=id_usuario,
@@ -207,13 +214,13 @@ class RegistroCompraAuditoriaService:
             )
 
             self.db.add(auditoria)
-            self.db.commit()
-            logger.info(f"Auditoria registrada: Eliminacion de registro {compra_id}")
+            # NO hacer commit aquí - dejar que el repositorio haga commit de toda la transacción
+            logger.info(f"Auditoria registrada (pendiente commit): Eliminacion de registro {compra_id}")
 
         except Exception as e:
-            logger.error(f"Error al registrar auditoria de eliminacion: {e}", exc_info=True)
-            self.db.rollback()
-            # No re-lanzamos la excepcion para no interrumpir el flujo principal
+            logger.error(f"Error al registrar auditoria de eliminacion de registro: {e}", exc_info=True)
+            # Re-lanzar la excepción para que el repositorio haga rollback de toda la transacción
+            raise
 
     def registrar_eliminacion_orden(
         self,
@@ -258,13 +265,13 @@ class RegistroCompraAuditoriaService:
                 fecha_evento=datetime.now(),
                 tipo_operacion="ELIMINACION",
                 tipo_entidad="ORDEN_COMPRA",
-                compra_id=compra_id,
-                id_orden=id_orden,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 id_usuario=id_usuario,
                 datos_anteriores=json.dumps({
                     'numero_oc': numero_oc,
+                    'id_orden': id_orden,  # Guardar el ID en los datos para referencia
+                    'compra_id': compra_id,  # Guardar el compra_id en los datos para referencia
                     'monto': float(monto_orden),
                     'tenia_registro': tenia_registro
                 }),
@@ -274,13 +281,13 @@ class RegistroCompraAuditoriaService:
             )
 
             self.db.add(auditoria)
-            self.db.commit()
-            logger.info(f"Auditoria registrada: Eliminacion de orden {numero_oc}")
+            # NO hacer commit aquí - dejar que el repositorio haga commit de toda la transacción
+            logger.info(f"Auditoria registrada (pendiente commit): Eliminacion de orden {numero_oc}")
 
         except Exception as e:
             logger.error(f"Error al registrar auditoria de eliminacion de orden: {e}", exc_info=True)
-            self.db.rollback()
-            # No re-lanzamos la excepcion para no interrumpir el flujo principal
+            # Re-lanzar la excepción para que el repositorio haga rollback de toda la transacción
+            raise
 
     def registrar_actualizacion_orden(
         self,
@@ -325,13 +332,19 @@ class RegistroCompraAuditoriaService:
                 fecha_evento=datetime.now(),
                 tipo_operacion="ACTUALIZACION",
                 tipo_entidad="ORDEN_COMPRA",
-                compra_id=compra_id,
-                id_orden=id_orden,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 id_usuario=id_usuario,
-                datos_anteriores=json.dumps({'monto': float(monto_anterior)}),
-                datos_nuevos=json.dumps({'monto': float(monto_nuevo)}),
+                datos_anteriores=json.dumps({
+                    'id_orden': id_orden,
+                    'compra_id': compra_id,
+                    'monto': float(monto_anterior)
+                }),
+                datos_nuevos=json.dumps({
+                    'id_orden': id_orden,
+                    'compra_id': compra_id,
+                    'monto': float(monto_nuevo)
+                }),
                 monto_anterior=float(monto_anterior),
                 monto_nuevo=float(monto_nuevo),
                 descripcion=descripcion,
@@ -343,10 +356,10 @@ class RegistroCompraAuditoriaService:
             )
 
             self.db.add(auditoria)
-            self.db.commit()
-            logger.info(f"Auditoria registrada: Actualizacion de orden {numero_oc}")
+            # NO hacer commit aquí - dejar que el caso de uso haga commit de toda la transacción
+            logger.info(f"Auditoria registrada (pendiente commit): Actualizacion de orden {numero_oc}")
 
         except Exception as e:
             logger.error(f"Error al registrar auditoria de actualizacion de orden: {e}", exc_info=True)
-            self.db.rollback()
-            # No re-lanzamos la excepcion para no interrumpir el flujo principal
+            # Re-lanzar la excepción para que haya rollback completo
+            raise
