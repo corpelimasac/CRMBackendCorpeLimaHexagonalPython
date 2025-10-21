@@ -21,6 +21,8 @@ class OrdenesCompraModel(Base):
   entrega=Column(String(255), nullable=True)
   consorcio=Column(Boolean, default=False, nullable=True)
 
+  igv=Column(String(255), nullable=True)
+
   activo = Column(Boolean, default=True, nullable=True)
   fecha_creacion = Column(Date, default=datetime.now, nullable=True)
 
