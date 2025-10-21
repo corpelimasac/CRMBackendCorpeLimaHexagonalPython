@@ -15,6 +15,8 @@ class OrdenesCompra:
     id_cotizacion_versiones: int
     id_proveedor: int
     id_proveedor_contacto: int
+    igv:float
+    total:float
     moneda: str
     pago: str
     entrega: str

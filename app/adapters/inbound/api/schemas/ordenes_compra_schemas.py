@@ -35,6 +35,8 @@ class ProductoUpdateInfo(BaseModel):
 class Data(BaseModel):
   proveedorInfo: ProveedorInfo = Field(..., description="Información del proveedor")
   productos: list[ProductoInfo] = Field(..., description="Lista de productos")
+  igv: float = Field(...,description="IGV de la OC")
+  total:float=Field(...,description="Total")
 
 ## Request
 class OrdenesCompraRequest(BaseModel):

@@ -113,6 +113,8 @@ class GenerarOrdenCompra:
                 id_cotizacion_versiones=request.idCotizacionVersiones,
                 id_proveedor=order_data.proveedorInfo.idProveedor,
                 id_proveedor_contacto=order_data.proveedorInfo.idProveedorContacto,
+                igv=order_data.igv,
+                total=order_data.total,
                 moneda=order_data.proveedorInfo.moneda,
                 pago=order_data.proveedorInfo.pago,
                 entrega=order_data.proveedorInfo.entrega,
