@@ -59,6 +59,13 @@ class Settings(BaseSettings):
         description="Timeout en segundos para apagar workers"
     )
 
+    # Configuración de AWS
+    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(default="us-east-1", env="AWS_REGION")
+    s3_bucket_name: str = Field(default="bucketantiguo", env="S3_BUCKET_NAME")
+
+
     @property
     def is_development(self) -> bool:
         """Verifica si está en modo desarrollo"""
@@ -80,4 +87,4 @@ def get_settings() -> Settings:
     """
     Obtener configuración de la aplicación (singleton)
     """
-    return Settings() 
+    return Settings()
