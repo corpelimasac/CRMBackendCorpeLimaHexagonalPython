@@ -33,7 +33,7 @@ def _normalize_filename(filename: str) -> str:
 class AWSFileStorage(FileStoragePort):
     def __init__(self):
         settings = get_settings()
-        self.bucket_name = settings.s3_bucket_name
+        self.bucket_name = settings.aws_bucket_name
         self.region = settings.aws_region
         self.s3_service = S3Service()
 

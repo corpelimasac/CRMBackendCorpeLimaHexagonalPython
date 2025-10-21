@@ -1,17 +1,24 @@
 """
 Configuración de la aplicación usando Pydantic Settings
 """
+import os
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
-from dotenv import load_dotenv
 from pydantic import Field
 from pydantic_settings import BaseSettings
+
+# --- Ruta al archivo .env ---
+# Construye la ruta al directorio raíz del proyecto para encontrar el .env
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+dotenv_path = BASE_DIR / ".env"
 
 
 class Settings(BaseSettings):
     """
-    Configuración de la aplicación con soporte para múltiples entornos
+    Configuración de la aplicación con soporte para múltiples entornos.
+    Pydantic se encargará de leer el archivo especificado en `env_file`.
     """
     # Entorno de ejecución
     environment: Literal["development", "production", "staging"] = Field(
@@ -25,59 +32,47 @@ class Settings(BaseSettings):
     debug: bool = Field(default=False, env="DEBUG")
     version: str = Field(default="1.0.0", env="VERSION")
 
-    load_dotenv()
-
     # Configuración de la base de datos
-    database_url: str = Field(
-        default="sqlite:///./crm_local.db",  # Base de datos local por defecto
-        env="DATABASE_URL"
-    )
-    async_database_url: str = Field(
-        default="sqlite+aiosqlite:///./crm_local.db",
-        env="ASYNC_DATABASE_URL"
-    )
-    database_host: str = Field(default="localhost", env="DATABASE_HOST")
-    database_port: int = Field(default=3306, env="DATABASE_PORT")
-    database_user: str = Field(default="root", env="DATABASE_USER")
-    database_password: str = Field(default="password", env="DATABASE_PASSWORD")
-    database_name: str = Field(default="crm_db", env="DATABASE_NAME")
-
-
+    database_url: str = Field(..., env="DATABASE_URL")
+    async_database_url: str = Field(..., env="ASYNC_DATABASE_URL")
+    database_host: str = Field(..., env="DATABASE_HOST")
+    database_port: int = Field(..., env="DATABASE_PORT")
+    database_user: str = Field(..., env="DATABASE_USER")
+    database_password: str = Field(..., env="DATABASE_PASSWORD")
+    database_name: str = Field(..., env="DATABASE_NAME")
 
     # Configuración de CORS
-    cors_origins: str = Field(default="*", env="CORS_ORIGINS")
+    cors_origins: str = Field(..., env="CORS_ORIGINS")
 
     # Configuración de eventos asíncronos
     evento_financiero_max_workers: int = Field(
-        default=20,
+        default=5,
         env="EVENTO_FINANCIERO_MAX_WORKERS",
         description="Número máximo de workers para eventos financieros"
     )
     evento_financiero_timeout: int = Field(
-        default=300,  # 5 minutos
+        default=60,
         env="EVENTO_FINANCIERO_TIMEOUT",
         description="Timeout en segundos para apagar workers"
     )
 
     # Configuración de AWS
-    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
-    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
-    aws_region: str = Field(default="us-east-1", env="AWS_REGION")
-    s3_bucket_name: str = Field(default="bucketantiguo", env="AWS_BUCKET_NAME")
-
+    aws_access_key_id: str = Field(..., env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(..., env="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(..., env="AWS_REGION")
+    aws_bucket_name: str = Field(..., env="AWS_BUCKET_NAME")
 
     @property
     def is_development(self) -> bool:
-        """Verifica si está en modo desarrollo"""
         return self.environment == "development"
 
     @property
     def is_production(self) -> bool:
-        """Verifica si está en modo producción"""
         return self.environment == "production"
-    
+
     class Config:
-        env_file = ".env"
+        # Le decimos a Pydantic que cargue las variables desde este archivo
+        env_file = dotenv_path
         env_file_encoding = "utf-8"
         extra = "allow"
 
@@ -85,6 +80,6 @@ class Settings(BaseSettings):
 @lru_cache()
 def get_settings() -> Settings:
     """
-    Obtener configuración de la aplicación (singleton)
+    Obtener configuración de la aplicación (singleton).
     """
     return Settings()
