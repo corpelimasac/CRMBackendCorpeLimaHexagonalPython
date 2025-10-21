@@ -115,7 +115,6 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 print(f"Este es el correlativo: {new_correlative}")
 
                 # Calcular total de la orden
-                total_orden = sum(item.p_total for item in order.items)
 
                 db_order = OrdenesCompraModel(
                     id_cotizacion=order.id_cotizacion,
@@ -123,13 +122,14 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     id_proveedor_contacto=order.id_proveedor_contacto,
                     moneda=order.moneda,
                     pago=order.pago,
+                    igv=order.igv,
+                    total=order.total,
                     entrega=order.entrega,
                     id_cotizacion_versiones=order.id_cotizacion_versiones,
                     fecha_creacion=datetime.now(),
                     correlative=new_correlative,
                     id_usuario=order.id_usuario,
                     consorcio=order.consorcio,
-                    total=str(total_orden)
                 )
 
                 self.db.add(db_order)
