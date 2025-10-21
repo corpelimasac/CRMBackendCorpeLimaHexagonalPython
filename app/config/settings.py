@@ -63,7 +63,7 @@ class Settings(BaseSettings):
     aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
     aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
     aws_region: str = Field(default="us-east-1", env="AWS_REGION")
-    s3_bucket_name: str = Field(default="bucketantiguo", env="S3_BUCKET_NAME")
+    s3_bucket_name: str = Field(default="bucketantiguo", env="AWS_BUCKET_NAME")
 
 
     @property
