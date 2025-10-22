@@ -1,5 +1,6 @@
 from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
+from app.config.settings import get_settings
 import os
 import tempfile
 from typing import List
@@ -30,9 +31,10 @@ def _normalize_filename(filename: str) -> str:
 
 
 class AWSFileStorage(FileStoragePort):
-    def __init__(self, bucket_name: str = 'bucketcorpelima', region: str = 'us-east-1'):
-        self.bucket_name = bucket_name
-        self.region = region
+    def __init__(self):
+        settings = get_settings()
+        self.bucket_name = settings.aws_bucket_name
+        self.region = settings.aws_region
         self.s3_service = S3Service()
 
     async def save(self, file_content: bytes, filename: str) -> str:

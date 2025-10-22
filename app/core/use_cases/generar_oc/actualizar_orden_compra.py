@@ -10,6 +10,7 @@ from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import ActualizarOrdenCompraRequest
 from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -64,7 +65,8 @@ class ActualizarOrdenCompra:
         self.db = db
         self.s3_service = s3_service or S3Service()
         self.auditoria_service = auditoria_service or RegistroCompraAuditoriaService(db)
-        self.bucket = os.getenv('AWS_BUCKET_NAME', 'corpelima-bucket')
+        # Centralizar lectura del bucket desde settings para evitar desincronización
+        self.bucket = get_settings().aws_bucket_name
         self.event_dispatcher = get_event_dispatcher()
 
     async def execute(self, request: ActualizarOrdenCompraRequest) -> dict:

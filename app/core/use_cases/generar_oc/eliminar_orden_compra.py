@@ -1,8 +1,8 @@
-import os
 import logging
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from fastapi import HTTPException
+from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,8 @@ class EliminarOrdenCompra:
         """
         self.ordenes_compra_repo = ordenes_compra_repo
         self.s3_service = s3_service or S3Service()
-        self.bucket = os.getenv('AWS_BUCKET_NAME', 'corpelima-bucket')
+        # Centralizar lectura del bucket desde settings para evitar desincronización
+        self.bucket = get_settings().aws_bucket_name
 
     def execute(self, id_orden: int) -> dict:
         """

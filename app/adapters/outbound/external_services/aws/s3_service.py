@@ -1,9 +1,10 @@
 import boto3
-import os
 from typing import Optional
 from botocore.exceptions import ClientError
 from urllib.parse import unquote
 import logging
+
+from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
 
@@ -62,11 +63,12 @@ class S3Service:
         """
         Inicializa el cliente de S3 con las credenciales del entorno.
         """
+        settings = get_settings()
         self.s3_client = boto3.client(
             's3',
-            aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
-            aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
-            region_name=os.getenv('AWS_REGION', 'us-east-1')
+            aws_access_key_id=settings.aws_access_key_id,
+            aws_secret_access_key=settings.aws_secret_access_key,
+            region_name=settings.aws_region
         )
 
     def upload_file(self, local_path: str, s3_key: str, bucket: str, region: str) -> str:
