@@ -289,7 +289,7 @@ class Generador:
             "BCP:   CTA. CTE  DOLARES  Nro.    ",
             "BCP:   CTA. CTE SOLES     Nro.    ",
             "",
-            "CEL:  930976197 / 952531238 / 934972023",
+            "CEL:  926502167",
             "ventas.consorcioelectrominero@gmail.com"
         ]
 
