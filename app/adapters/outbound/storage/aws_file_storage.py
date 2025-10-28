@@ -5,14 +5,17 @@ import os
 import tempfile
 from typing import List
 import re
+import unicodedata
 
 
 def _normalize_filename(filename: str) -> str:
     """
     Normaliza el nombre del archivo para que sea seguro en URLs de S3:
     - Elimina espacios al inicio y al final
-    - Reemplaza espacios múltiples internos por un solo guión bajo
-    - Reemplaza espacios simples por guiones bajos
+    - Elimina diacríticos (tildes) y convierte ñ/Ñ -> n/N
+    - Reemplaza espacios y guiones bajos por guiones medios (-)
+    - Reemplaza caracteres no seguros por guiones medios (-)
+    - Colapsa guiones consecutivos y convierte el nombre (sin extensión) a MAYÚSCULAS
     """
     # Separar nombre y extensión
     name_parts = filename.rsplit('.', 1)
@@ -24,7 +27,25 @@ def _normalize_filename(filename: str) -> str:
 
     # Normalizar el nombre (sin extensión)
     name = name.strip()  # Eliminar espacios inicio/final
-    name = re.sub(r'\s+', '_', name)  # Reemplazar espacios múltiples por un guión bajo
+
+    # 1) Quitar diacríticos (e.g., "á" -> "a", "ñ" -> "n")
+    name = unicodedata.normalize('NFKD', name)
+    name = ''.join(c for c in name if not unicodedata.combining(c))
+
+    # 2) Reemplazar espacios por guiones (colapsando múltiples)
+    name = re.sub(r'\s+', '-', name)
+    #    Reemplazar guiones bajos existentes por guiones
+    name = name.replace('_', '-')
+
+    # 3) Reemplazar cualquier caracter no seguro por "-"
+    #    Permitidos: letras, números, punto y guion
+    name = re.sub(r'[^A-Za-z0-9.-]', '-', name)
+
+    # 4) Colapsar guiones repetidos
+    name = re.sub(r'-+', '-', name)
+
+    # 5) Convertir a MAYÚSCULAS (solo el nombre, no la extensión)
+    name = name.upper()
 
     # Reconstruir el nombre con extensión
     return f"{name}.{ext}" if ext else name
@@ -56,10 +77,6 @@ class AWSFileStorage(FileStoragePort):
             # Limpiar archivo temporal
             if os.path.exists(temp_file_path):
                 os.remove(temp_file_path)
-
-    async def save_s3(self, file_content: bytes, filename: str) -> str:
-        """Guarda un archivo en S3 y devuelve su URL (implementación del método abstracto)"""
-        return await self.save(file_content, filename)
 
     async def save_multiple(self, files: dict[str, bytes]) -> List[str]:
         """Guarda múltiples archivos en S3 y devuelve lista de URLs"""

@@ -22,9 +22,3 @@ class FileStoragePort(ABC):
   async def cleanup_pdf(self, filename:str) :
     """Elimina un archivo temporal PDF"""
     pass
-
-  @abstractmethod
-  async def save_s3(self, file_content:bytes, filename:str) -> str:
-    """Guarda un archivo en S3 y devuelve su ruta"""
-    pass
-
