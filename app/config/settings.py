@@ -4,9 +4,10 @@ Configuración de la aplicación usando Pydantic Settings
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Literal
+from typing import Literal, Optional
+from urllib.parse import urlparse
 
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 # --- Ruta al archivo .env ---
@@ -34,15 +35,50 @@ class Settings(BaseSettings):
 
     # Configuración de la base de datos
     database_url: str = Field(..., env="DATABASE_URL")
-    async_database_url: str = Field(..., env="ASYNC_DATABASE_URL")
-    database_host: str = Field(..., env="DATABASE_HOST")
-    database_port: int = Field(..., env="DATABASE_PORT")
-    database_user: str = Field(..., env="DATABASE_USER")
-    database_password: str = Field(..., env="DATABASE_PASSWORD")
-    database_name: str = Field(..., env="DATABASE_NAME")
+    async_database_url: Optional[str] = Field(default=None, env="ASYNC_DATABASE_URL")
+    database_host: Optional[str] = Field(default=None, env="DATABASE_HOST")
+    database_port: Optional[int] = Field(default=None, env="DATABASE_PORT")
+    database_user: Optional[str] = Field(default=None, env="DATABASE_USER")
+    database_password: Optional[str] = Field(default=None, env="DATABASE_PASSWORD")
+    database_name: Optional[str] = Field(default=None, env="DATABASE_NAME")
+    
+    @model_validator(mode='after')
+    def parse_database_url(self):
+        """
+        Si las variables individuales de la base de datos no están configuradas,
+        las extrae automáticamente de DATABASE_URL (útil para Railway).
+        """
+        if self.database_url and not self.async_database_url:
+            parsed = urlparse(self.database_url)
+            
+            # Construir async_database_url reemplazando postgresql:// por postgresql+asyncpg://
+            if self.database_url.startswith("postgresql://"):
+                self.async_database_url = self.database_url.replace(
+                    "postgresql://", "postgresql+asyncpg://", 1
+                )
+            elif self.database_url.startswith("postgres://"):
+                self.async_database_url = self.database_url.replace(
+                    "postgres://", "postgresql+asyncpg://", 1
+                )
+            else:
+                self.async_database_url = self.database_url
+            
+            # Extraer componentes individuales
+            if not self.database_host:
+                self.database_host = parsed.hostname or "localhost"
+            if not self.database_port:
+                self.database_port = parsed.port or 5432
+            if not self.database_user:
+                self.database_user = parsed.username or ""
+            if not self.database_password:
+                self.database_password = parsed.password or ""
+            if not self.database_name:
+                self.database_name = parsed.path.lstrip("/") if parsed.path else ""
+        
+        return self
 
     # Configuración de CORS
-    cors_origins: str = Field(..., env="CORS_ORIGINS")
+    cors_origins: str = Field(default="*", env="CORS_ORIGINS")
 
     # Configuración de eventos asíncronos
     evento_financiero_max_workers: int = Field(
@@ -57,10 +93,10 @@ class Settings(BaseSettings):
     )
 
     # Configuración de AWS
-    aws_access_key_id: str = Field(..., env="AWS_ACCESS_KEY_ID")
-    aws_secret_access_key: str = Field(..., env="AWS_SECRET_ACCESS_KEY")
-    aws_region: str = Field(..., env="AWS_REGION")
-    aws_bucket_name: str = Field(..., env="AWS_BUCKET_NAME")
+    aws_access_key_id: str = Field(default="", env="AWS_ACCESS_KEY_ID")
+    aws_secret_access_key: str = Field(default="", env="AWS_SECRET_ACCESS_KEY")
+    aws_region: str = Field(default="us-east-1", env="AWS_REGION")
+    aws_bucket_name: str = Field(default="", env="AWS_BUCKET_NAME")
 
     @property
     def is_development(self) -> bool:
