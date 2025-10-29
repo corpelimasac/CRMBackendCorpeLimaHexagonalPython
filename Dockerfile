@@ -1,7 +1,7 @@
 # ============================================
 # Dockerfile para FastAPI con Playwright
 # ============================================
-FROM mcr.microsoft.com/playwright/python:v1.48.0-jammy
+FROM mcr.microsoft.com/playwright/python:v1.55.0-jammy
 
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1
