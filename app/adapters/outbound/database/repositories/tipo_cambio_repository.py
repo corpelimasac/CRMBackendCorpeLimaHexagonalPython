@@ -2,7 +2,7 @@ from app.core.ports.repositories.tipo_cambio_repository import TipoCambioReposit
 from app.adapters.outbound.database.models.tasa_cambio_sunat_model import TasaCambioSunatModel
 from sqlalchemy.orm import Session
 from decimal import Decimal
-from typing import Optional
+from typing import Optional, cast
 from datetime import date
 import logging
 
@@ -33,7 +33,7 @@ class TipoCambioRepository(TipoCambioRepositoryPort):
 
             if tasa:
                 logger.info(f"Tipo de cambio obtenido: {tasa.venta} (fecha: {tasa.fecha})")
-                return tasa.venta
+                return cast(Decimal, cast(object, tasa.venta))
             else:
                 logger.warning("No se encontró tipo de cambio en la base de datos")
                 return None
@@ -59,7 +59,7 @@ class TipoCambioRepository(TipoCambioRepositoryPort):
 
             if tasa:
                 logger.info(f"Tipo de cambio para {fecha}: {tasa.venta}")
-                return tasa.venta
+                return cast(Decimal, cast(object, tasa.venta))
             else:
                 logger.warning(f"No se encontró tipo de cambio para la fecha {fecha}")
                 return None

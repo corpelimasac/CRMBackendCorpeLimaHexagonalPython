@@ -1,9 +1,17 @@
-from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
-from app.adapters.outbound.database.models.proveedor_contacto_model import intermedia_proveedor_contacto
-from app.core.ports.repositories.proveedores_repository_port import ProveedoresRepositoryPort
+from sqlalchemy import select, and_
 from sqlalchemy.orm import Session
-from typing import List, Any
+from typing import List
+import logging
+
+from app.adapters.outbound.database.models.proveedor_contacto_model import (
+    ProveedorContactosModel,
+    intermedia_proveedor_contacto,
+)
+from app.core.ports.repositories.proveedores_repository_port import ProveedoresRepositoryPort
 from app.core.domain.entities.proveedor_contacto import ProveedorContacto
+
+logger = logging.getLogger(__name__)
+
 
 class ProveedoresRepository(ProveedoresRepositoryPort):
     """Repositorio para manejar las operaciones de base de datos relacionadas con los proveedores"""
@@ -12,28 +20,47 @@ class ProveedoresRepository(ProveedoresRepositoryPort):
         self.db = db
 
     def obtener_contacto_proveedor(self, provider_id: int) -> List[ProveedorContacto]:
-        print(f"provider_id: {provider_id}")
-        print(f"Ejecutando consulta para obtener los contactos")
-        contact_models = self.db.query(ProveedorContactosModel)\
-            .join(intermedia_proveedor_contacto)\
-            .filter(intermedia_proveedor_contacto.c.id_proveedor == provider_id)\
-            .all()
+        """
+        Obtiene los contactos activos de un proveedor
 
-        print(f"contact_models: {contact_models}")
+        Args:
+            provider_id: ID del proveedor
 
-        contacts = []
-        for c in contact_models:
-            contacts.append(
-                ProveedorContacto(
-                    id_proveedor_contacto=c.id_proveedor_contacto,
-                    nombre=c.nombre,
-                    telefono=c.telefono,
-                    celular=c.celular,
-                    correo=c.correo,
-                    sexo=c.sexo,
-                    cargo=c.cargo,
-                    observacion=c.observacion
+        Returns:
+            List[ProveedorContacto]: Lista de contactos del proveedor
+        """
+        logger.info(f"Obteniendo contactos del proveedor {provider_id}")
+
+        # --- Construcción del query SQLAlchemy Core ---
+        stmt = (
+            select(ProveedorContactosModel)
+            .join(intermedia_proveedor_contacto)
+            .where(
+                and_(
+                    intermedia_proveedor_contacto.c.id_proveedor == provider_id,
+                    ProveedorContactosModel.estado.is_(True),
                 )
             )
-        print(f"contacts: {contacts}")
+        )
+
+        # --- Ejecución ---
+        result = self.db.execute(stmt).scalars().all()
+        logger.debug(f"Modelos encontrados: {len(result)} contactos")
+
+        # --- Conversión a entidades de dominio ---
+        contacts = [
+            ProveedorContacto(
+                id_proveedor_contacto=c.id_proveedor_contacto,
+                nombre=c.nombre,
+                telefono=c.telefono,
+                celular=c.celular,
+                correo=c.correo,
+                sexo=c.sexo,
+                cargo=c.cargo,
+                observacion=c.observacion,
+            )
+            for c in result
+        ]
+
+        logger.info(f"Se obtuvieron {len(contacts)} contactos del proveedor {provider_id}")
         return contacts

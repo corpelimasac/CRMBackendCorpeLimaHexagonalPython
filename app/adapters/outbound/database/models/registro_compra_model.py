@@ -1,6 +1,5 @@
-from sqlalchemy import Column, Date, Numeric, String, BIGINT, DateTime, func
+from sqlalchemy import Column, Date, Numeric, String, BIGINT
 from sqlalchemy.orm import relationship
-from datetime import datetime, date
 from .base import Base
 
 

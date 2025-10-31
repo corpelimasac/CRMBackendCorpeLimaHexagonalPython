@@ -27,6 +27,7 @@ from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
 from app.core.ports.repositories.ordenes_compra_repository import (
     OrdenesCompraRepositoryPort,
 )
+from app.adapters.outbound.database.models.registro_compra_orden_model import RegistroCompraOrdenModel
 
 logger = logging.getLogger(__name__)
 
@@ -107,12 +108,12 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
             current_year = datetime.now().year
             saved_orders = []
-            
+
             # Guardar todas las órdenes sin commit
             for idx, order in enumerate(orders):
                 new_number = last_number + idx + 1
                 new_correlative = f"OC-{new_number:06d}-{current_year}"
-                print(f"Este es el correlativo: {new_correlative}")
+                logger.debug(f"Generado correlativo: {new_correlative}")
 
                 # Calcular total de la orden
 
@@ -145,9 +146,9 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                         precio_total=item.p_total,
                     )
                     self.db.add(db_detail)
-                
+
                 saved_orders.append(order)
-                print(f"Orden {db_order.id_orden} preparada para guardado en batch")
+                logger.debug(f"Orden {db_order.id_orden} preparada para guardado en batch")
 
             # Publicar UN SOLO EVENTO para todas las órdenes
             # Usamos los datos de la primera orden para el evento (todas son de la misma cotización/versión)
@@ -173,7 +174,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
         except Exception as e:
             self.db.rollback()
-            print(f"Error al guardar órdenes en batch: {e}")
+            logger.error(f"Error al guardar órdenes en batch: {e}")
             raise e
 
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
@@ -187,10 +188,10 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             List[Any]: Lista de resultados de la consulta
         """
         try:
-            print(
-                f"Ejecutando consulta para cotización: {request.id_cotizacion}, versión: {request.id_version}"
+            logger.info(
+                f"Obteniendo info OC para cotización: {request.id_cotizacion}, versión: {request.id_version}"
             )
-            print(f"Contactos de proveedor: {request.id_contacto_proveedor}")
+            logger.debug(f"Contactos de proveedor: {request.id_contacto_proveedor}")
 
             latest_order_id_subquery = (
                 self.db.query(OrdenesCompraModel.id_orden)
@@ -271,18 +272,15 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             )
 
             resultados = query.all()
-            print(f"Consulta ejecutada. Resultados obtenidos: {len(resultados)}")
+            logger.info(f"Consulta ejecutada. Resultados obtenidos: {len(resultados)}")
 
             if resultados:
-                print(f"Primer resultado: {resultados[0]}")
+                logger.debug(f"Primer resultado: {resultados[0]}")
 
             return resultados
 
         except Exception as e:
-            print(f"Error en obtener_info_oc: {e}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Error en obtener_info_oc: {e}", exc_info=True)
             return []
 
     def actualizar_ruta_s3(self, id_orden: int, ruta_s3: str) -> bool:
@@ -302,19 +300,19 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 .filter(OrdenesCompraModel.id_orden == id_orden)
                 .first()
             )
-            print(f"Este es el orden: {orden}")
+            logger.debug(f"Orden encontrada: {orden}")
 
             if orden:
                 orden.ruta_s3 = ruta_s3
                 self.db.commit()
-                print(f"URL S3 actualizada para orden {id_orden}: {ruta_s3}")
+                logger.info(f"URL S3 actualizada para orden {id_orden}: {ruta_s3}")
                 return True
             else:
-                print(f"No se encontró orden con ID {id_orden}")
+                logger.warning(f"No se encontró orden con ID {id_orden}")
                 return False
 
         except Exception as e:
-            print(f"Error al actualizar ruta S3: {e}")
+            logger.error(f"Error al actualizar ruta S3: {e}")
             self.db.rollback()
             return False
 
@@ -350,7 +348,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 return []
 
         except Exception as e:
-            print(f"Error al obtener órdenes por contacto: {e}")
+            logger.error(f"Error al obtener órdenes por contacto: {e}")
             return []
 
     def obtener_orden_por_id(self, id_orden: int) -> type[OrdenesCompraModel]:
@@ -395,7 +393,6 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         Raises:
             ValueError: Si la orden no existe
         """
-        from app.adapters.outbound.database.models.registro_compra_orden_model import RegistroCompraOrdenModel
 
         try:
             # Verificar que la orden existe
