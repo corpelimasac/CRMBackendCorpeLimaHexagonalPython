@@ -1,11 +1,13 @@
-from app.core.ports.repositories.registro_compra_repository import RegistroCompraRepositoryPort
+import logging
+from datetime import datetime
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
+from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 from app.adapters.outbound.database.models.registro_compra_model import RegistroCompraModel
 from app.adapters.outbound.database.models.registro_compra_orden_model import RegistroCompraOrdenModel
-from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
-from sqlalchemy.orm import Session
-from typing import List, Optional
-from datetime import date
-import logging
+from app.core.ports.repositories.registro_compra_repository import RegistroCompraRepositoryPort
 
 logger = logging.getLogger(__name__)
 
@@ -142,7 +144,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         try:
             query = self.db.query(OrdenesCompraModel).filter(
                 OrdenesCompraModel.id_cotizacion == id_cotizacion,
-                OrdenesCompraModel.activo == True
+                OrdenesCompraModel.activo.is_(True)
             )
             
             # Filtrar por versión si se proporciona
@@ -224,7 +226,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.fecha_orden_compra = datos_calculados['fecha_orden_compra']
                 registro.tipo_empresa = datos_calculados['tipo_empresa']
                 # Actualizar fecha de cambio
-                registro.fecha_cambio = date.today()
+                registro.fecha_cambio = datetime.now().date()
 
                 # Eliminar detalles anteriores de registro_compra_ordenes
                 self.db.query(RegistroCompraOrdenModel).filter(

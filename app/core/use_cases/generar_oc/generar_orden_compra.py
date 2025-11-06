@@ -1,15 +1,19 @@
-from app.core.domain.entities.ordenes_compra import OrdenesCompra, OrdenesCompraItem # ... y otros
-from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
-from app.core.ports.repositories.cotizaciones_versiones_repository import CotizacionVersionesRepositoryPort
-from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
-from app.core.ports.services.file_storage_port import FileStoragePort
-from app.adapters.inbound.api.schemas.ordenes_compra_schemas import OrdenesCompraRequest
-from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
-from typing import List
-from fastapi import HTTPException
 import asyncio
-
+import logging
 import traceback
+from typing import List
+
+from fastapi import HTTPException
+
+from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
+from app.adapters.inbound.api.schemas.ordenes_compra_schemas import OrdenesCompraRequest
+from app.core.domain.entities.ordenes_compra import OrdenesCompra, OrdenesCompraItem
+from app.core.ports.repositories.cotizaciones_versiones_repository import CotizacionVersionesRepositoryPort
+from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
+from app.core.ports.services.file_storage_port import FileStoragePort
+from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
+
+logger = logging.getLogger(__name__)
 
 class GenerarOrdenCompra:   
     def __init__(
@@ -24,17 +28,21 @@ class GenerarOrdenCompra:
         self.excel_generator = excel_generator
         self.file_storage = file_storage
 
-    async def _process_and_generate_excel_for_contacto(
+    async def _process_and_generate_excel_for_contacto_sin_commit(
             self, id_contacto: int,
             generar_oc_request: GenerarOCRequest
-    ) -> str | None:
+    ) -> dict:
         """
-        Procesa un contacto específico, genera el Excel, lo sube a S3 y actualiza la URL en la BD.
+        Procesa un contacto específico, genera el Excel y lo sube a S3.
+        NO actualiza la BD (eso se hace después de que todo salga bien).
         Esta función está diseñada para ser ejecutada de manera asíncrona.
+
+        Returns:
+            dict: {'url': str, 'orden_ids': List[int]}
         """
         try:
-            print(f"Procesando contacto {id_contacto}")
-            
+            logger.info(f"Procesando contacto {id_contacto}")
+
             # Crear un request específico para este contacto
             request_contacto = GenerarOCRequest(
                 id_usuario=generar_oc_request.id_usuario,
@@ -43,57 +51,53 @@ class GenerarOrdenCompra:
                 id_contacto_proveedor=[id_contacto],
                 consorcio=generar_oc_request.consorcio
             )
-            
+
             # Generar Excel para este contacto específico
             excel_files = self.excel_generator.generate_for_order(request_contacto)
-            
+
             if not excel_files:
-                print(f"No se generaron archivos Excel para el contacto {id_contacto}")
-                return None
-                
+                raise ValueError(f"No se generaron archivos Excel para el contacto {id_contacto}")
+
             # Subir archivos a S3
             urls = await self.file_storage.save_multiple(excel_files)
-            
-            if urls:
-                url_s3 = urls[0]
-                print(f"Excel generado y subido exitosamente para el contacto {id_contacto}: {url_s3}")
-                
-                # Obtener las órdenes de compra asociadas a este contacto
-                ordenes = self.ordenes_compra_repo.obtener_ordenes_por_contacto_y_version(
-                    generar_oc_request.id_cotizacion,
-                    generar_oc_request.id_version,
-                    id_contacto
-                )
-                
-                # Actualizar la URL S3 en todas las órdenes de este contacto
-                for orden in ordenes:
-                    exito = self.ordenes_compra_repo.actualizar_ruta_s3(orden.id_orden, url_s3)
-                    if exito:
-                        print(f"URL S3 actualizada en BD para orden {orden.id_orden}")
-                    else:
-                        print(f"Error al actualizar URL S3 para orden {orden.id_orden}")
-                
-                return url_s3
-            
-            return None
-            
+
+            if not urls:
+                raise ValueError(f"No se pudo subir a S3 para el contacto {id_contacto}")
+
+            url_s3 = urls[0]
+            logger.info(f"Excel generado y subido exitosamente para el contacto {id_contacto}: {url_s3}")
+
+            # Obtener las órdenes de compra asociadas a este contacto
+            ordenes = self.ordenes_compra_repo.obtener_ordenes_por_contacto_y_version(
+                generar_oc_request.id_cotizacion,
+                generar_oc_request.id_version,
+                id_contacto
+            )
+
+            orden_ids = [orden.id_orden for orden in ordenes]
+            logger.debug(f"Órdenes encontradas para contacto {id_contacto}: {orden_ids}")
+
+            return {
+                'url': url_s3,
+                'orden_ids': orden_ids
+            }
+
         except Exception as e:
-            print(f"Error al procesar el contacto {id_contacto}: {e}")
-            traceback.print_exc()
-            return None
+            logger.error(f"Error al procesar el contacto {id_contacto}: {e}", exc_info=True)
+            raise
 
     async def execute(self, request: OrdenesCompraRequest) -> List[str]:
-        print("Ejecutando caso de uso")
+        logger.info("Ejecutando caso de uso GenerarOrdenCompra")
 
         if not self.cotizacion_version_repo.exists_by_id(request.idCotizacionVersiones):
             raise ValueError("La versión de cotización especificada no existe.")
-    
-        print("Version de cotización existe")
+
+        logger.info(f"Versión de cotización {request.idCotizacionVersiones} verificada")
 
         # 1. Preparar todas las órdenes de compra
-        print("Preparando órdenes de compra...")
+        logger.info(f"Preparando {len(request.data)} órdenes de compra...")
         ordenes_a_guardar = []
-        
+
         for order_data in request.data:
             # Mapear los productos del DTO a la entidad OrdenesCompraItem
             items_entidad = [
@@ -121,20 +125,20 @@ class GenerarOrdenCompra:
                 items=items_entidad,
                 consorcio=request.consorcio
             )
-            
+
             ordenes_a_guardar.append(ordenes_compra_entity)
 
-        # Guardar TODAS las órdenes en una sola transacción con UN SOLO EVENTO
-        print(f"Guardando {len(ordenes_a_guardar)} órdenes de compra en batch...")
-        self.ordenes_compra_repo.save_batch(ordenes_a_guardar)
-        print(f"✅ {len(ordenes_a_guardar)} órdenes guardadas exitosamente")
+        # PASO 1: Guardar órdenes SIN COMMIT (solo flush para obtener IDs)
+        logger.info(f"Guardando {len(ordenes_a_guardar)} órdenes de compra en batch (sin commit)...")
+        orden_ids = self.ordenes_compra_repo.save_batch_sin_commit(ordenes_a_guardar)
+        logger.info(f"✅ {len(orden_ids)} órdenes preparadas (pendiente commit)")
 
-        # 2. Crear GenerarOCRequest con todos los contactos
+        # PASO 2: Crear GenerarOCRequest con todos los contactos
         lista_ids_contacto = list(set([
             order_data.proveedorInfo.idProveedorContacto
             for order_data in request.data
         ]))
-        print(f"Lista de IDs de contacto: {lista_ids_contacto}")
+        logger.debug(f"Lista de IDs de contacto: {lista_ids_contacto}")
 
         generar_oc_request = GenerarOCRequest(
             id_usuario=request.idUsuario,
@@ -144,40 +148,59 @@ class GenerarOrdenCompra:
             consorcio=request.consorcio
         )
 
-        # 3. Verificar que hay datos para generar Excel
+        # PASO 3: Verificar que hay datos para generar Excel
         resultados = self.ordenes_compra_repo.obtener_info_oc(generar_oc_request)
         if not resultados:
+            self.ordenes_compra_repo.rollback()
             raise HTTPException(
-                status_code=404, 
+                status_code=404,
                 detail="No se encontraron datos para los parámetros especificados"
             )
 
-        print(f"Total de resultados obtenidos: {len(resultados)}")
+        logger.info(f"Total de resultados obtenidos: {len(resultados)}")
 
-        # 4. Generar Excel y subir a S3 usando paralelismo
-        print("Generando Excel y subiendo a S3 con paralelismo...")
-        generated_files_urls = []
-        
-        # Usar asyncio.gather para paralelismo asíncrono
-        tasks = [
-            self._process_and_generate_excel_for_contacto(id_contacto, generar_oc_request)
-            for id_contacto in lista_ids_contacto
-        ]
-        
-        urls = await asyncio.gather(*tasks, return_exceptions=True)
-        
-        # Filtrar URLs válidas
-        for url in urls:
-            if isinstance(url, str) and url:
-                generated_files_urls.append(url)
-            elif isinstance(url, Exception):
-                print(f"Error en procesamiento paralelo: {url}")
+        # PASO 4: Generar Excel y subir a S3 usando paralelismo
+        logger.info("Generando Excel y subiendo a S3 con paralelismo...")
+        try:
+            generated_files_urls = []
 
-        if not generated_files_urls:
+            # Usar asyncio.gather para paralelismo asíncrono
+            tasks = [
+                self._process_and_generate_excel_for_contacto_sin_commit(id_contacto, generar_oc_request)
+                for id_contacto in lista_ids_contacto
+            ]
+
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+
+            # Verificar resultados
+            for result in results:
+                if isinstance(result, Exception):
+                    logger.error(f"❌ Error en procesamiento paralelo: {result}")
+                    raise result
+                elif isinstance(result, dict) and result.get('url'):
+                    generated_files_urls.append(result['url'])
+                    # Actualizar URLs en memoria (sin commit)
+                    for orden_id in result.get('orden_ids', []):
+                        self.ordenes_compra_repo.actualizar_ruta_s3_sin_commit(orden_id, result['url'])
+
+            if not generated_files_urls:
+                self.ordenes_compra_repo.rollback()
+                raise HTTPException(
+                    status_code=500,
+                    detail="No se pudo generar ninguna orden de compra."
+                )
+
+            # PASO 5: TODO salió bien → COMMIT ÚNICO con evento
+            logger.info("✅ Todos los archivos subidos exitosamente. Haciendo commit...")
+            self.ordenes_compra_repo.commit_con_evento(ordenes_a_guardar)
+
+            logger.info(f"✅ {len(generated_files_urls)} órdenes creadas con éxito - Evento en background")
+            return generated_files_urls
+
+        except Exception as e:
+            logger.error(f"❌ Error durante generación/subida: {e}. Haciendo rollback...", exc_info=True)
+            self.ordenes_compra_repo.rollback()
             raise HTTPException(
                 status_code=500,
-                detail="No se pudo generar ninguna orden de compra."
+                detail=f"Error al crear órdenes de compra: {str(e)}"
             )
-
-        print(f"Se generaron {len(generated_files_urls)} archivos Excel exitosamente")
-        return generated_files_urls

@@ -10,6 +10,9 @@ class OrdenesCompraItem:
 
 @dataclass
 class OrdenesCompra:
+    def __init__(self):
+        self.registro_compra_orden = None
+
     id_usuario: int
     id_cotizacion: int
     id_cotizacion_versiones: int

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Date, BIGINT
+from sqlalchemy import Column, Integer, String, ForeignKey, Boolean, Date, BIGINT, Numeric
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
@@ -16,7 +16,7 @@ class OrdenesCompraModel(Base):
   ruta_s3 = Column(String(250), nullable=True)
   
   moneda=Column(String(255), nullable=True)
-  total=Column(String(255), nullable=True)
+  total=Column(Numeric(12, 3), nullable=True)
   pago=Column(String(255), nullable=True)
   entrega=Column(String(255), nullable=True)
   consorcio=Column(Boolean, default=False, nullable=True)
