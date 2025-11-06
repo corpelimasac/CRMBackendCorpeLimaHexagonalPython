@@ -383,22 +383,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             )
             logger.debug(f"Contactos de proveedor: {request.id_contacto_proveedor}")
 
-            latest_order_id_subquery = (
-                self.db.query(OrdenesCompraModel.id_orden)
-                .filter(
-                    OrdenesCompraModel.id_cotizacion == request.id_cotizacion,
-                    OrdenesCompraModel.id_cotizacion_versiones == request.id_version,
-                    OrdenesCompraModel.id_proveedor_contacto.in_(
-                        request.id_contacto_proveedor
-                    ),
-                )
-                .order_by(
-                    OrdenesCompraModel.id_orden.desc()  # Ordenamos por ID descendente para obtener el último
-                )
-                .limit(1)
-                .scalar_subquery()
-            )
-
+            # Simplificar: aplicar filtros directamente sin subconsulta innecesaria
+            # Esto permitirá obtener TODAS las órdenes que coincidan, no solo una
             query = (
                 self.db.query(
                     OrdenesCompraModel.correlative.label("NUMERO_OC"),
@@ -451,14 +437,22 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 )
                 .join(
                     ProveedorDetalleModel,
-                    ProductosModel.id_producto == ProveedorDetalleModel.id_producto,
+                    (ProductosModel.id_producto == ProveedorDetalleModel.id_producto) &
+                    (ProductosModel.id_proveedor == OrdenesCompraModel.id_proveedor),
                 )
                 .join(
                     ProveedorContactosModel,
                     OrdenesCompraModel.id_proveedor_contacto
                     == ProveedorContactosModel.id_proveedor_contacto,
                 )
-                .filter(OrdenesCompraModel.id_orden == latest_order_id_subquery)
+                .filter(
+                    OrdenesCompraModel.id_cotizacion == request.id_cotizacion,
+                    OrdenesCompraModel.id_cotizacion_versiones == request.id_version,
+                    OrdenesCompraModel.id_proveedor_contacto.in_(
+                        request.id_contacto_proveedor
+                    ),
+                )
+                .order_by(OrdenesCompraModel.id_orden.desc())
             )
 
             resultados = query.all()
