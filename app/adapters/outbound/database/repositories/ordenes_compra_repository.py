@@ -32,7 +32,7 @@ from app.adapters.outbound.database.models.registro_compra_orden_model import Re
 logger = logging.getLogger(__name__)
 
 
-def _handle_orden_compra_evento(event_data: dict):
+def handle_orden_compra_evento(event_data: dict):
     """
     Handler que se ejecuta en thread separado con NUEVA transacción
     Equivalente a @Transactional(propagation = REQUIRES_NEW)
@@ -70,6 +70,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
     def __init__(self, db: Session):
         self.db = db
         self.event_dispatcher = get_event_dispatcher()
+        self._pending_orders = None  # Para guardar las órdenes entre save_batch_sin_commit y commit_con_evento
 
     def save(self, order: OrdenesCompra) -> OrdenesCompra:
         """
@@ -80,78 +81,106 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         logger.warning("⚠️ Método save() está deprecado. Usar save_batch() en su lugar.")
         return self.save_batch([order])[0]
 
+    def _preparar_ordenes_batch(self, orders: List[OrdenesCompra]) -> List[int]:
+        """
+        Método privado para preparar órdenes de compra sin hacer commit.
+        Elimina duplicación de código entre save_batch y save_batch_sin_commit.
+
+        Args:
+            orders: Lista de órdenes de compra a preparar
+
+        Returns:
+            Lista de IDs de las órdenes preparadas
+        """
+        if not orders:
+            return []
+
+        # Obtener el último correlativo
+        last_correlative = (
+            self.db.query(OrdenesCompraModel)
+            .order_by(OrdenesCompraModel.id_orden.desc())
+            .first()
+        )
+        if last_correlative:
+            last_number = int(last_correlative.correlative.split("-")[1])
+        else:
+            last_number = 0
+
+        current_year = datetime.now().year
+        orden_ids = []
+
+        # Preparar todas las órdenes (sin commit, solo flush para IDs)
+        for idx, order in enumerate(orders):
+            new_number = last_number + idx + 1
+            new_correlative = f"OC-{new_number:06d}-{current_year}"
+            logger.debug(f"Generado correlativo: {new_correlative}")
+
+            # Calcular total de la orden (igual que en el Excel)
+            try:
+                # Sumar el precio total de todos los items (subtotal)
+                subtotal = round(sum(float(it.p_total) for it in getattr(order, 'items', [])), 2)
+
+                # Si es "SIN IGV", agregar el 18% de IGV al subtotal
+                if getattr(order, 'igv', 'CON IGV') == "SIN IGV":
+                    total_calculado = round(subtotal + (subtotal * 0.18), 2)
+                else:
+                    # Si es "CON IGV", el subtotal ya incluye el IGV
+                    total_calculado = subtotal
+            except (AttributeError, TypeError, ValueError):
+                total_calculado = round(float(order.total), 2) if getattr(order, 'total', None) is not None else 0.0
+
+            db_order = OrdenesCompraModel(
+                id_cotizacion=order.id_cotizacion,
+                id_proveedor=order.id_proveedor,
+                id_proveedor_contacto=order.id_proveedor_contacto,
+                moneda=order.moneda,
+                pago=order.pago,
+                igv=order.igv,
+                total=total_calculado,
+                entrega=order.entrega,
+                id_cotizacion_versiones=order.id_cotizacion_versiones,
+                fecha_creacion=datetime.now(),
+                correlative=new_correlative,
+                id_usuario=order.id_usuario,
+                consorcio=order.consorcio,
+            )
+
+            self.db.add(db_order)
+            self.db.flush()  # Obtener ID sin commit
+
+            # Insertar detalles
+            for item in order.items:
+                db_detail = OrdenesCompraDetallesModel(
+                    id_orden=db_order.id_orden,
+                    id_producto=item.id_producto,
+                    cantidad=item.cantidad,
+                    precio_unitario=item.p_unitario,
+                    precio_total=item.p_total,
+                )
+                self.db.add(db_detail)
+
+            orden_ids.append(db_order.id_orden)
+            logger.debug(f"Orden {db_order.id_orden} ({new_correlative}) preparada")
+
+        return orden_ids
+
     def save_batch(self, orders: List[OrdenesCompra]) -> List[OrdenesCompra]:
         """
         Guarda múltiples órdenes de compra en una sola transacción
-        y dispara el evento UNA SOLA VEZ al final
-        
+        y dispara el evento UNA SOLA VEZ al final.
+        MÉTODO LEGACY: Se mantiene para compatibilidad, pero se recomienda usar save_batch_sin_commit + commit_con_evento.
+
         Args:
             orders: Lista de órdenes de compra a guardar
-            
+
         Returns:
             Lista de órdenes guardadas
         """
         try:
-            if not orders:
-                return []
-            
-            # Obtener el último correlativo
-            last_correlative = (
-                self.db.query(OrdenesCompraModel)
-                .order_by(OrdenesCompraModel.id_orden.desc())
-                .first()
-            )
-            if last_correlative:
-                last_number = int(last_correlative.correlative.split("-")[1])
-            else:
-                last_number = 0
+            # Usar método común para preparar órdenes
+            self._preparar_ordenes_batch(orders)
 
-            current_year = datetime.now().year
-            saved_orders = []
-
-            # Guardar todas las órdenes sin commit
-            for idx, order in enumerate(orders):
-                new_number = last_number + idx + 1
-                new_correlative = f"OC-{new_number:06d}-{current_year}"
-                logger.debug(f"Generado correlativo: {new_correlative}")
-
-                # Calcular total de la orden
-
-                db_order = OrdenesCompraModel(
-                    id_cotizacion=order.id_cotizacion,
-                    id_proveedor=order.id_proveedor,
-                    id_proveedor_contacto=order.id_proveedor_contacto,
-                    moneda=order.moneda,
-                    pago=order.pago,
-                    igv=order.igv,
-                    total=order.total,
-                    entrega=order.entrega,
-                    id_cotizacion_versiones=order.id_cotizacion_versiones,
-                    fecha_creacion=datetime.now(),
-                    correlative=new_correlative,
-                    id_usuario=order.id_usuario,
-                    consorcio=order.consorcio,
-                )
-
-                self.db.add(db_order)
-                self.db.flush()  # Obtener ID sin commit
-
-                # Insertar detalles
-                for item in order.items:
-                    db_detail = OrdenesCompraDetallesModel(
-                        id_orden=db_order.id_orden,
-                        id_producto=item.id_producto,
-                        cantidad=item.cantidad,
-                        precio_unitario=item.p_unitario,
-                        precio_total=item.p_total,
-                    )
-                    self.db.add(db_detail)
-
-                saved_orders.append(order)
-                logger.debug(f"Orden {db_order.id_orden} preparada para guardado en batch")
-
-            # Publicar UN SOLO EVENTO para todas las órdenes
-            # Usamos los datos de la primera orden para el evento (todas son de la misma cotización/versión)
+            # Publicar evento y hacer commit
             first_order = orders[0]
             self.event_dispatcher.publish(
                 session=self.db,
@@ -162,20 +191,181 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     'cantidad_ordenes': len(orders),
                     'consorcio': first_order.consorcio if first_order.consorcio else False
                 },
-                handler=_handle_orden_compra_evento
+                handler=handle_orden_compra_evento
             )
 
-            # Commit de todas las órdenes de una sola vez
+            # Commit
             self.db.commit()
 
             logger.info(f"✅ {len(orders)} órdenes guardadas en batch - Evento será procesado en background")
 
-            return saved_orders
+            return orders
 
         except Exception as e:
             self.db.rollback()
             logger.error(f"Error al guardar órdenes en batch: {e}")
             raise e
+
+    def save_batch_sin_commit(self, orders: List[OrdenesCompra]) -> List[int]:
+        """
+        Guarda múltiples órdenes de compra SIN HACER COMMIT.
+        Solo hace flush() para obtener los IDs.
+        El commit se hará más tarde cuando todo esté listo (incluyendo S3).
+
+        Args:
+            orders: Lista de órdenes de compra a guardar
+
+        Returns:
+            Lista de IDs de las órdenes guardadas
+        """
+        try:
+            # Usar método común (DRY: Don't Repeat Yourself)
+            orden_ids = self._preparar_ordenes_batch(orders)
+
+            # Guardar referencia a las órdenes para usarlas en commit_con_evento
+            self._pending_orders = orders
+
+            logger.info(f"✅ {len(orden_ids)} órdenes preparadas SIN COMMIT")
+            return orden_ids
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al guardar órdenes sin commit: {e}")
+            raise e
+
+    def actualizar_ruta_s3_sin_commit(self, id_orden: int, ruta_s3: str) -> bool:
+        """
+        Actualiza la ruta S3 de una orden SIN HACER COMMIT.
+
+        Args:
+            id_orden: ID de la orden
+            ruta_s3: URL del archivo en S3
+
+        Returns:
+            bool: True si se actualizó
+        """
+        try:
+            orden = (
+                self.db.query(OrdenesCompraModel)
+                .filter(OrdenesCompraModel.id_orden == id_orden)
+                .first()
+            )
+
+            if orden:
+                orden.ruta_s3 = ruta_s3
+                logger.debug(f"URL S3 actualizada en memoria para orden {id_orden}: {ruta_s3}")
+                return True
+            else:
+                logger.warning(f"No se encontró orden con ID {id_orden}")
+                return False
+
+        except Exception as e:
+            logger.error(f"Error al actualizar ruta S3 sin commit: {e}")
+            raise
+
+    def commit_con_evento(self, orders: List[OrdenesCompra]) -> None:
+        """
+        Hace commit de todas las operaciones pendientes y encola el evento.
+
+        Args:
+            orders: Órdenes que se están creando (para el evento)
+        """
+        try:
+            # Encolar evento ANTES del commit
+            first_order = orders[0]
+            self.event_dispatcher.publish(
+                session=self.db,
+                event_data={
+                    'tipo_evento': 'ORDEN_COMPRA_CREADA',
+                    'id_cotizacion': first_order.id_cotizacion,
+                    'id_cotizacion_versiones': first_order.id_cotizacion_versiones,
+                    'cantidad_ordenes': len(orders),
+                    'consorcio': first_order.consorcio if first_order.consorcio else False
+                },
+                handler=handle_orden_compra_evento
+            )
+
+            # Registrar auditoría de creación para cada orden
+            # Optimización: Obtener todas las órdenes en un solo query usando IN
+            import json
+            from app.adapters.outbound.database.models.registro_compra_auditoria_model import RegistroCompraAuditoriaModel
+
+            id_cotizacion = first_order.id_cotizacion
+            id_cotizacion_versiones = first_order.id_cotizacion_versiones
+
+            # Obtener todas las órdenes recién creadas en UN SOLO query
+            contactos_ids = [order.id_proveedor_contacto for order in orders]
+            ordenes_bd = (
+                self.db.query(OrdenesCompraModel)
+                .filter(OrdenesCompraModel.id_cotizacion == id_cotizacion)
+                .filter(OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones)
+                .filter(OrdenesCompraModel.id_proveedor_contacto.in_(contactos_ids))
+                .all()
+            )
+
+            # Crear un map para acceso O(1)
+            ordenes_map = {
+                orden.id_proveedor_contacto: orden
+                for orden in ordenes_bd
+            }
+
+            # Registrar auditoría para cada orden
+            for order in orders:
+                orden_bd = ordenes_map.get(order.id_proveedor_contacto)
+
+                if orden_bd:
+                    total_orden = float(orden_bd.total) if orden_bd.total else 0.0
+                    cantidad_productos = len(order.items)
+
+                    auditoria = RegistroCompraAuditoriaModel(
+                        fecha_evento=datetime.now(),
+                        tipo_operacion="CREACION",
+                        tipo_entidad="ORDEN_COMPRA",
+                        id_cotizacion=order.id_cotizacion,
+                        id_cotizacion_versiones=order.id_cotizacion_versiones,
+                        id_usuario=order.id_usuario,
+                        datos_nuevos=json.dumps({
+                            'id_orden': orden_bd.id_orden,
+                            'numero_oc': orden_bd.correlative,
+                            'monto': total_orden,
+                            'cantidad_productos': cantidad_productos,
+                            'moneda': orden_bd.moneda,
+                            'pago': orden_bd.pago,
+                            'entrega': orden_bd.entrega
+                        }),
+                        monto_nuevo=total_orden,
+                        descripcion=f"Orden de compra {orden_bd.correlative} creada. Total: S/ {total_orden:,.2f}. Productos: {cantidad_productos}",
+                        razon="Creación de orden de compra"
+                    )
+
+                    self.db.add(auditoria)
+                    logger.debug(f"Auditoría registrada para orden {orden_bd.correlative}")
+
+            # Ahora sí, hacer commit de TODO (órdenes, detalles, auditorías)
+            # Al hacer commit, el evento se disparará automáticamente
+            self.db.commit()
+
+            logger.info(f"✅ COMMIT EXITOSO - {len(orders)} órdenes creadas - Evento y auditorías procesándose")
+
+            # Limpiar referencia
+            self._pending_orders = None
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"❌ Error al hacer commit con evento: {e}")
+            raise
+
+    def rollback(self) -> None:
+        """
+        Hace rollback de todas las operaciones pendientes.
+        """
+        try:
+            self.db.rollback()
+            self._pending_orders = None
+            logger.warning("⚠️ ROLLBACK ejecutado - Todas las operaciones pendientes canceladas")
+        except Exception as e:
+            logger.error(f"Error al hacer rollback: {e}")
+            raise
 
     def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
         """
@@ -235,7 +425,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     OrdenesCompraDetallesModel.precio_unitario.label("PUNIT"),
                     case(
                         (ProveedorDetalleModel.igv == "SIN IGV", "SIN IGV"),
-                        else_=ProveedorDetalleModel.igv == "CON IGV",
+                        else_="CON IGV",
                     ).label("IGV"),
                     OrdenesCompraDetallesModel.precio_total.label("TOTAL"),
                 )
@@ -351,12 +541,13 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al obtener órdenes por contacto: {e}")
             return []
 
-    def obtener_orden_por_id(self, id_orden: int) -> type[OrdenesCompraModel]:
+    def obtener_orden_por_id(self, id_orden: int, with_registro: bool = False) -> type[OrdenesCompraModel]:
         """
         Obtiene una orden de compra por su ID
 
         Args:
             id_orden (int): ID de la orden de compra
+            with_registro (bool): Si True, carga la relación registro_compra_orden usando eager loading
 
         Returns:
             OrdenesCompra: Orden de compra encontrada
@@ -364,12 +555,18 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         Raises:
             ValueError: Si la orden no existe
         """
+        from sqlalchemy.orm import joinedload
+
         try:
-            orden = (
-                self.db.query(OrdenesCompraModel)
-                .filter(OrdenesCompraModel.id_orden == id_orden)
-                .first()
+            query = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == id_orden
             )
+
+            # Usar eager loading para cargar registro_compra_orden en un solo query
+            if with_registro:
+                query = query.options(joinedload(OrdenesCompraModel.registro_compra_orden))
+
+            orden = query.first()
 
             if not orden:
                 raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
@@ -461,7 +658,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     'id_cotizacion_versiones': id_cotizacion_versiones,
                     'cambio_cotizacion': False
                 },
-                handler=_handle_orden_compra_evento
+                handler=handle_orden_compra_evento
             )
 
             self.db.commit()

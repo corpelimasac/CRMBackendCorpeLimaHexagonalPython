@@ -68,3 +68,15 @@ class OrdenesCompraRepositoryPort(ABC):
   def obtener_orden_completa(self, id_orden: int) -> Any:
     """Obtiene la orden completa con todos sus datos (proveedor, contacto, productos)."""
     pass
+
+  def rollback(self):
+      pass
+
+  def commit_con_evento(self, ordenes_a_guardar):
+      pass
+
+  def actualizar_ruta_s3_sin_commit(self, orden_id, param):
+      pass
+
+  def save_batch_sin_commit(self, ordenes_a_guardar):
+      pass

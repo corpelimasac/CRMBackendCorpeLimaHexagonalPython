@@ -1,4 +1,3 @@
-import os
 import logging
 from datetime import datetime
 from typing import Optional
@@ -85,8 +84,8 @@ class ActualizarOrdenCompra:
         try:
             logger.info(f"Iniciando actualización de orden de compra ID: {request.idOrden}")
 
-            # 1. Validar que la orden existe (consulta ligera solo para validación)
-            orden = self.ordenes_compra_repo.obtener_orden_por_id(request.idOrden)
+            # 1. Validar que la orden existe y cargar relación con registro_compra (eager loading)
+            orden = self.ordenes_compra_repo.obtener_orden_por_id(request.idOrden, with_registro=True)
             if not orden:
                 raise HTTPException(
                     status_code=404,
@@ -100,11 +99,15 @@ class ActualizarOrdenCompra:
             numero_oc = request.numeroOc
             consorcio = request.consorcio
 
-            # Guardar monto anterior para auditoría
-            monto_anterior = float(orden.total) if hasattr(orden, 'total') and orden.total else 0.0
-            id_cotizacion = orden.id_cotizacion if hasattr(orden, 'id_cotizacion') else None
-            id_cotizacion_versiones = orden.id_cotizacion_versiones if hasattr(orden, 'id_cotizacion_versiones') else None
-            id_usuario = orden.id_usuario if hasattr(orden, 'id_usuario') else None
+            # Guardar datos para auditoría (accediendo a la relación ya cargada)
+            monto_anterior = float(orden.total) if orden.total else 0.0
+            id_cotizacion = orden.id_cotizacion
+            id_cotizacion_versiones = orden.id_cotizacion_versiones
+            id_usuario = orden.id_usuario
+            # Acceder a la relación sin query adicional (ya está cargada con joinedload)
+            compra_id = orden.registro_compra_orden.compra_id if orden.registro_compra_orden else None
+
+            logger.debug(f"Orden asociada a registro de compra: {compra_id if compra_id else 'ninguno'}")
 
             # 2. Actualizar campos básicos de la orden (SIN COMMIT)
             if request.moneda or request.pago or request.entrega:
@@ -112,8 +115,7 @@ class ActualizarOrdenCompra:
                     id_orden=request.idOrden,
                     moneda=request.moneda,
                     pago=request.pago,
-                    entrega=request.entrega,
-                    auto_commit=False  # NO hacer commit todavía
+                    entrega=request.entrega  # NO hacer commit todavía
                 )
                 logger.info("Campos básicos de la orden actualizados")
 
@@ -126,8 +128,7 @@ class ActualizarOrdenCompra:
                 # Caso 1: Producto existente marcado para eliminar
                 if producto.idOcDetalle is not None and producto.eliminar:
                     self.ordenes_compra_repo.eliminar_detalle_producto(
-                        producto.idOcDetalle,
-                        auto_commit=False  # NO hacer commit todavía
+                        producto.idOcDetalle  # NO hacer commit todavía
                     )
                     productos_eliminados += 1
                     logger.info(f"Producto detalle {producto.idOcDetalle} eliminado")
@@ -138,8 +139,7 @@ class ActualizarOrdenCompra:
                         id_oc_detalle=producto.idOcDetalle,
                         cantidad=producto.cantidad,
                         precio_unitario=producto.pUnitario,
-                        precio_total=producto.ptotal,
-                        auto_commit=False  # NO hacer commit todavía
+                        precio_total=producto.ptotal  # NO hacer commit todavía
                     )
                     productos_actualizados += 1
                     logger.info(f"Producto detalle {producto.idOcDetalle} actualizado")
@@ -151,8 +151,7 @@ class ActualizarOrdenCompra:
                         id_producto=producto.idProducto,
                         cantidad=producto.cantidad,
                         precio_unitario=producto.pUnitario,
-                        precio_total=producto.ptotal,
-                        auto_commit=False  # NO hacer commit todavía
+                        precio_total=producto.ptotal  # NO hacer commit todavía
                     )
                     productos_creados += 1
                     logger.info(f"Nuevo producto {producto.idProducto} creado en la orden")
@@ -160,9 +159,20 @@ class ActualizarOrdenCompra:
             logger.info(f"Resumen de productos: {productos_eliminados} eliminados, "
                        f"{productos_actualizados} actualizados, {productos_creados} creados")
 
-            # 4. Calcular el nuevo total de la orden
+            # 4. Calcular el nuevo total de la orden (igual que en el Excel)
             detalles_actuales = self.ordenes_compra_repo.obtener_detalles_orden(request.idOrden)
-            total_orden = sum(detalle.precio_total for detalle in detalles_actuales)
+            subtotal = sum(detalle.precio_total for detalle in detalles_actuales)
+
+            # Obtener el IGV del primer producto (asumimos que todos tienen el mismo IGV)
+            igv_tipo = request.productos[0].igv if request.productos else "CON IGV"
+
+            # Si es "SIN IGV", agregar el 18% de IGV al subtotal
+            if igv_tipo == "SIN IGV":
+                total_orden = round(subtotal + (subtotal * 0.18), 2)
+            else:
+                # Si es "CON IGV", el subtotal ya incluye el IGV
+                total_orden = round(subtotal, 2)
+
             monto_nuevo = float(total_orden)
 
             # Actualizar el total en la orden (SIN COMMIT - usamos la misma sesión self.db)
@@ -181,10 +191,10 @@ class ActualizarOrdenCompra:
                 monto_anterior=monto_anterior,
                 monto_nuevo=monto_nuevo,
                 cambios_detalle=cambios_detalle,
-                compra_id=None,  # No tenemos registro de compra en este contexto
+                compra_id=compra_id,  # Ya tenemos el compra_id del eager loading
                 id_usuario=id_usuario
             )
-            logger.info(f"Auditoría registrada para orden {numero_oc}")
+            logger.info(f"Auditoría registrada para orden {numero_oc}{' (con registro de compra '+str(compra_id)+')' if compra_id else ''}")
 
             # 5. Regenerar Excel usando los datos del request
             logger.info("Regenerando archivo Excel con datos actualizados...")
@@ -222,6 +232,14 @@ class ActualizarOrdenCompra:
                 for p in request.productos if not p.eliminar
             ]
 
+            # Validar que hay productos para generar Excel
+            if not productos_data:
+                self.db.rollback()
+                raise HTTPException(
+                    status_code=400,
+                    detail="No hay productos para generar el archivo Excel. Debe haber al menos un producto."
+                )
+
             # Generar Excel con datos actualizados
             excel_files = self.excel_generator.generate_from_data(
                 orden_data=orden_data,
@@ -232,27 +250,18 @@ class ActualizarOrdenCompra:
             )
 
             if not excel_files:
+                self.db.rollback()
                 raise HTTPException(
                     status_code=500,
                     detail="No se pudo generar el archivo Excel"
                 )
 
-            # 6. Eliminar archivo antiguo de S3
-            if ruta_s3_antigua:
-                try:
-                    logger.info(f"Eliminando archivo antiguo de S3: {ruta_s3_antigua}")
-                    self.s3_service.delete_file_from_url(ruta_s3_antigua, self.bucket)
-                    logger.info("Archivo antiguo eliminado de S3")
-                except Exception as e:
-                    logger.warning(f"No se pudo eliminar el archivo antiguo de S3: {e}")
-                    # No lanzamos error aquí, continuamos con la subida del nuevo
-
-            # 7. Subir nuevo Excel a S3
+            # 6. Subir PRIMERO el nuevo Excel a S3 (antes de eliminar el antiguo)
             logger.info("Subiendo nuevo archivo a S3...")
             urls = await self.file_storage.save_multiple(excel_files)
 
             if not urls:
-                # Si falla la subida, hacer rollback de TODO
+                # Si falla la subida, hacer rollback de TODO (el antiguo sigue en S3)
                 self.db.rollback()
                 raise HTTPException(
                     status_code=500,
@@ -262,18 +271,29 @@ class ActualizarOrdenCompra:
             nueva_url_s3 = urls[0]
             logger.info(f"Nuevo archivo subido a S3: {nueva_url_s3}")
 
-            # 8. Actualizar ruta S3 en la BD (SIN COMMIT)
-            self.ordenes_compra_repo.actualizar_ruta_s3(request.idOrden, nueva_url_s3)
-            logger.info("Ruta S3 actualizada en la base de datos")
+            # 7. Ahora SÍ eliminar archivo antiguo de S3 (solo si la subida fue exitosa)
+            if ruta_s3_antigua and ruta_s3_antigua != nueva_url_s3:
+                try:
+                    logger.info(f"Eliminando archivo antiguo de S3: {ruta_s3_antigua}")
+                    self.s3_service.delete_file_from_url(ruta_s3_antigua, self.bucket)
+                    logger.info("✅ Archivo antiguo eliminado de S3")
+                except Exception as e:
+                    logger.warning(f"⚠️ No se pudo eliminar el archivo antiguo de S3: {e}")
+                    # No es crítico, el nuevo ya está subido y se va a usar
+                    # El archivo antiguo quedará huérfano pero no rompe el flujo
 
-            # ===================================================================
-            # ✅ COMMIT ÚNICO - Si llegamos aquí, TODO está correcto
-            # ===================================================================
-            self.db.commit()
-            logger.info("✅ COMMIT EXITOSO - Todos los cambios guardados en la BD")
+            # 8. Actualizar ruta S3 en la BD (SIN COMMIT - mantener atomicidad)
+            # Actualizar directamente sin usar el método del repositorio para evitar commit prematuro
+            from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
+            orden_modelo = self.db.query(OrdenesCompraModel).filter(
+                OrdenesCompraModel.id_orden == request.idOrden
+            ).first()
+            if orden_modelo:
+                orden_modelo.ruta_s3 = nueva_url_s3
+                logger.info("Ruta S3 actualizada en la base de datos (pendiente commit)")
 
-            # 9. Disparar evento DESPUÉS del commit (fuera de la transacción)
-            from app.adapters.outbound.database.repositories.ordenes_compra_repository import _handle_orden_compra_evento
+            # 9. Encolar evento ANTES del commit (se ejecutará solo si el commit es exitoso)
+            from app.adapters.outbound.database.repositories.ordenes_compra_repository import handle_orden_compra_evento
 
             self.event_dispatcher.publish(
                 session=self.db,
@@ -283,9 +303,17 @@ class ActualizarOrdenCompra:
                     'id_cotizacion_versiones': orden.id_cotizacion_versiones,
                     'cambio_cotizacion': False
                 },
-                handler=_handle_orden_compra_evento
+                handler=handle_orden_compra_evento
             )
-            logger.info("✅ Evento disparado para recalcular registro de compra")
+            logger.info("📝 Evento encolado para recalcular registro de compra (se ejecutará después del commit)")
+
+            # ===================================================================
+            # ✅ COMMIT ÚNICO - Si llegamos aquí, TODO está correcto
+            # Si este commit es exitoso, el evento se disparará automáticamente
+            # Si falla, se hace rollback de TODO y el evento NO se ejecuta
+            # ===================================================================
+            self.db.commit()
+            logger.info("✅ COMMIT EXITOSO - Todos los cambios guardados en la BD - Evento siendo procesado en background")
 
             return {
                 "status": "success",

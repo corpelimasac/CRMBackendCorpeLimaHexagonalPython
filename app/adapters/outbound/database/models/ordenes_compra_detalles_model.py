@@ -1,6 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Float, ForeignKey, Boolean, Date, BIGINT
-from sqlalchemy.orm import relationship
-from datetime import datetime
+from sqlalchemy import Column, Integer, Float, ForeignKey, BIGINT
 from .base import Base
 
 class OrdenesCompraDetallesModel(Base):
