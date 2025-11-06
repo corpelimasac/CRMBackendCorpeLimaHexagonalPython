@@ -160,6 +160,9 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 )
                 self.db.add(db_detail)
 
+            # Hacer flush para que los detalles estén disponibles en consultas posteriores
+            self.db.flush()
+
             orden_ids.append(db_order.id_orden)
             logger.debug(f"Orden {db_order.id_orden} ({new_correlative}) preparada")
 
