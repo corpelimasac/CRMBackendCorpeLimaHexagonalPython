@@ -149,6 +149,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             self.db.flush()  # Obtener ID sin commit
 
             # Insertar detalles
+            logger.debug(f"Insertando {len(order.items)} detalles para orden {db_order.id_orden}")
             for item in order.items:
                 db_detail = OrdenesCompraDetallesModel(
                     id_orden=db_order.id_orden,
@@ -437,8 +438,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 )
                 .join(
                     ProveedorDetalleModel,
-                    (ProductosModel.id_producto == ProveedorDetalleModel.id_producto) &
-                    (ProductosModel.id_proveedor == OrdenesCompraModel.id_proveedor),
+                    ProductosModel.id_producto == ProveedorDetalleModel.id_producto,
                 )
                 .join(
                     ProveedorContactosModel,
