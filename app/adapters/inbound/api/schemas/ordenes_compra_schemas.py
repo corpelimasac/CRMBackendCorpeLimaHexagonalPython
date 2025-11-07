@@ -14,6 +14,7 @@ class ProductoInfo(BaseModel):
   cantidad: int = Field(..., description="Cantidad del producto")
   pUnitario: float = Field(..., description="Precio unitario del producto")
   ptotal: float = Field(..., description="Total del producto")
+  idProductoCotizacion: Optional[int] = Field(None, description="ID del producto en productos_cotizaciones")
 
 class ProductoUpdateInfo(BaseModel):
   idOcDetalle: Optional[int] = Field(None, description="ID del detalle de la orden (null para nuevos productos)")
@@ -27,6 +28,7 @@ class ProductoUpdateInfo(BaseModel):
   ptotal: float = Field(..., description="Total del producto")
   igv: str = Field(..., description="IGV (CON IGV / SIN IGV)")
   eliminar: bool = Field(False, description="Si es true, marca el producto para eliminar")
+  idProductoCotizacion: Optional[int] = Field(None, description="ID del producto en productos_cotizaciones")
 
   class Config:
     populate_by_name = True  # Permite usar tanto el nombre del campo como el alias

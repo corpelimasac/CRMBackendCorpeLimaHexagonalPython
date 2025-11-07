@@ -105,7 +105,8 @@ class GenerarOrdenCompra:
                     id_producto=producto.idProducto,
                     cantidad=producto.cantidad,
                     p_unitario=producto.pUnitario,
-                    p_total=producto.ptotal
+                    p_total=producto.ptotal,
+                    id_producto_cotizacion=producto.idProductoCotizacion  # Relacionar con productos_cotizaciones
                 )
                 for producto in order_data.productos
             ]

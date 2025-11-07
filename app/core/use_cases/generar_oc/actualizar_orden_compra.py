@@ -151,7 +151,8 @@ class ActualizarOrdenCompra:
                         id_producto=producto.idProducto,
                         cantidad=producto.cantidad,
                         precio_unitario=producto.pUnitario,
-                        precio_total=producto.ptotal  # NO hacer commit todavía
+                        precio_total=producto.ptotal,
+                        id_producto_cotizacion=producto.idProductoCotizacion  # Relacionar con productos_cotizaciones
                     )
                     productos_creados += 1
                     logger.info(f"Nuevo producto {producto.idProducto} creado en la orden")

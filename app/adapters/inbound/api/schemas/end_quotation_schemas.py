@@ -20,7 +20,7 @@ class ProveedorInfoDTO(BaseModel):
 
 class ProductoDTO(BaseModel):
     """DTO para un único producto en la lista."""
-    id: int = Field(..., description="ID del producto") 
+    id: int = Field(..., description="ID del producto")
     cant: int = Field(..., description="Cantidad del producto")
     und: str = Field(..., description="Unidad de medida")
     nombre: str = Field(..., description="Nombre del producto")
@@ -29,6 +29,7 @@ class ProductoDTO(BaseModel):
     punitario: float = Field(..., description="Precio unitario")
     ptotal: float = Field(..., description="Precio total")
     igv: str = Field(..., description="IGV")
+    idProductoCotizacion: int = Field(..., description="ID del producto en productos_cotizaciones")
     
 class GetDataEndQuotationDTO(BaseModel):
     """
