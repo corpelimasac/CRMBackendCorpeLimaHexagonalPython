@@ -668,7 +668,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al eliminar orden de compra {id_orden}: {e}")
             raise
 
-    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None, auto_commit: bool = True) -> bool:
+    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None, id_proveedor: int = None, id_proveedor_contacto: int = None, auto_commit: bool = True) -> bool:
         """
         Actualiza los campos básicos de una orden de compra
 
@@ -677,6 +677,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             moneda (str, optional): Nueva moneda
             pago (str, optional): Nueva forma de pago
             entrega (str, optional): Nuevas condiciones de entrega
+            id_proveedor (int, optional): Nuevo ID del proveedor
+            id_proveedor_contacto (int, optional): Nuevo ID del contacto del proveedor
             auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
@@ -702,6 +704,10 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 orden.pago = pago
             if entrega is not None:
                 orden.entrega = entrega
+            if id_proveedor is not None:
+                orden.id_proveedor = id_proveedor
+            if id_proveedor_contacto is not None:
+                orden.id_proveedor_contacto = id_proveedor_contacto
 
             if auto_commit:
                 self.db.commit()

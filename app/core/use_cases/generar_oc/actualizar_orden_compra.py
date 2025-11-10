@@ -110,14 +110,17 @@ class ActualizarOrdenCompra:
             logger.debug(f"Orden asociada a registro de compra: {compra_id if compra_id else 'ninguno'}")
 
             # 2. Actualizar campos básicos de la orden (SIN COMMIT)
-            if request.moneda or request.pago or request.entrega:
+            if request.moneda or request.pago or request.entrega or request.proveedor:
                 self.ordenes_compra_repo.actualizar_orden(
                     id_orden=request.idOrden,
                     moneda=request.moneda,
                     pago=request.pago,
-                    entrega=request.entrega  # NO hacer commit todavía
+                    entrega=request.entrega,
+                    id_proveedor=request.proveedor.idProveedor if request.proveedor else None,
+                    id_proveedor_contacto=request.proveedor.idProveedorContacto if request.proveedor else None,
+                    auto_commit=False  # NO hacer commit todavía
                 )
-                logger.info("Campos básicos de la orden actualizados")
+                logger.info("Campos básicos de la orden actualizados (incluyendo proveedor y contacto)")
 
             # 3. Procesar productos (SIN COMMIT)
             productos_eliminados = 0
