@@ -16,3 +16,6 @@ class OrdenesCompraDetallesModel(Base):
 
   # Relación con la tabla de ordenes de compra
   id_orden = Column(BIGINT, ForeignKey("ordenes_compra.id_orden"), nullable=False)
+
+  # Relación con productos_cotizaciones para saber qué producto específico de la cotización se usó
+  id_producto_cotizacion = Column(BIGINT, ForeignKey("productos_cotizaciones.id_producto_cotizacion"), nullable=True)

@@ -7,6 +7,7 @@ class OrdenesCompraItem:
     cantidad: int
     p_unitario: float
     p_total: float
+    id_producto_cotizacion: int = None  # Relación con productos_cotizaciones
 
 @dataclass
 class OrdenesCompra:

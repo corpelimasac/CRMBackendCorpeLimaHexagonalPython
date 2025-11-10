@@ -157,6 +157,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     cantidad=item.cantidad,
                     precio_unitario=item.p_unitario,
                     precio_total=item.p_total,
+                    id_producto_cotizacion=item.id_producto_cotizacion  # Guardar relación con productos_cotizaciones
                 )
                 self.db.add(db_detail)
 
@@ -777,7 +778,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al actualizar detalle {id_oc_detalle}: {e}")
             raise
 
-    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float, auto_commit: bool = True) -> Any:
+    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float, id_producto_cotizacion: int = None, auto_commit: bool = True) -> Any:
         """
         Crea un nuevo detalle de producto
 
@@ -787,6 +788,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             cantidad (int): Cantidad
             precio_unitario (float): Precio unitario
             precio_total (float): Precio total
+            id_producto_cotizacion (int, optional): ID del producto en productos_cotizaciones
             auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
@@ -798,7 +800,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 id_producto=id_producto,
                 cantidad=cantidad,
                 precio_unitario=precio_unitario,
-                precio_total=precio_total
+                precio_total=precio_total,
+                id_producto_cotizacion=id_producto_cotizacion
             )
 
             self.db.add(nuevo_detalle)
