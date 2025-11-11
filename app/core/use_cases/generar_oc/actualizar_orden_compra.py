@@ -8,7 +8,7 @@ from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
 from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import ActualizarOrdenCompraRequest
-from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+from app.core.services.ordenes_compra_auditoria_service import OrdenesCompraAuditoriaService
 from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -43,7 +43,7 @@ class ActualizarOrdenCompra:
         file_storage: FileStoragePort,
         db: Session,
         s3_service: S3Service = None,
-        auditoria_service: Optional[RegistroCompraAuditoriaService] = None
+        auditoria_service: Optional[OrdenesCompraAuditoriaService] = None
     ):
         """
         Inicializa el caso de uso con las dependencias necesarias.
@@ -63,7 +63,7 @@ class ActualizarOrdenCompra:
         self.file_storage = file_storage
         self.db = db
         self.s3_service = s3_service or S3Service()
-        self.auditoria_service = auditoria_service or RegistroCompraAuditoriaService(db)
+        self.auditoria_service = auditoria_service or OrdenesCompraAuditoriaService(db)
         # Centralizar lectura del bucket desde settings para evitar desincronización
         self.bucket = get_settings().aws_bucket_name
         self.event_dispatcher = get_event_dispatcher()
@@ -107,6 +107,13 @@ class ActualizarOrdenCompra:
             # Acceder a la relación sin query adicional (ya está cargada con joinedload)
             compra_id = orden.registro_compra_orden.compra_id if orden.registro_compra_orden else None
 
+            # Guardar datos anteriores para auditoría
+            id_proveedor_anterior = orden.id_proveedor
+            id_contacto_anterior = orden.id_proveedor_contacto
+            moneda_anterior = orden.moneda
+            pago_anterior = orden.pago
+            entrega_anterior = orden.entrega
+
             logger.debug(f"Orden asociada a registro de compra: {compra_id if compra_id else 'ninguno'}")
 
             # 2. Actualizar campos básicos de la orden (SIN COMMIT)
@@ -127,9 +134,41 @@ class ActualizarOrdenCompra:
             productos_actualizados = 0
             productos_creados = 0
 
+            # Listas para auditoría detallada
+            productos_eliminados_lista = []
+            productos_modificados_lista = []
+            productos_agregados_lista = []
+
+            # Obtener detalles actuales de productos ANTES de modificarlos (para auditoría)
+            detalles_anteriores_map = {}
+            if request.productos:
+                from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
+                from app.adapters.outbound.database.models.productos_model import ProductosModel
+
+                detalles_anteriores = (
+                    self.db.query(OrdenesCompraDetallesModel, ProductosModel.nombre_producto)
+                    .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
+                    .filter(OrdenesCompraDetallesModel.id_orden == request.idOrden)
+                    .all()
+                )
+
+                for detalle, nombre_producto in detalles_anteriores:
+                    detalles_anteriores_map[detalle.id_oc_detalle] = {
+                        'id_producto': detalle.id_producto,
+                        'nombre': nombre_producto,
+                        'cantidad': detalle.cantidad,
+                        'precio_unitario': float(detalle.precio_unitario) if detalle.precio_unitario else 0.0,
+                        'precio_total': float(detalle.precio_total) if detalle.precio_total else 0.0
+                    }
+
             for producto in request.productos:
                 # Caso 1: Producto existente marcado para eliminar
                 if producto.idOcDetalle is not None and producto.eliminar:
+                    # Guardar datos para auditoría
+                    if producto.idOcDetalle in detalles_anteriores_map:
+                        detalle_anterior = detalles_anteriores_map[producto.idOcDetalle]
+                        productos_eliminados_lista.append(detalle_anterior)
+
                     self.ordenes_compra_repo.eliminar_detalle_producto(
                         producto.idOcDetalle  # NO hacer commit todavía
                     )
@@ -138,6 +177,20 @@ class ActualizarOrdenCompra:
 
                 # Caso 2: Producto existente a actualizar
                 elif producto.idOcDetalle is not None and not producto.eliminar:
+                    # Verificar si cambió para auditoría
+                    if producto.idOcDetalle in detalles_anteriores_map:
+                        detalle_anterior = detalles_anteriores_map[producto.idOcDetalle]
+                        if (detalle_anterior['cantidad'] != producto.cantidad or
+                            detalle_anterior['precio_unitario'] != producto.pUnitario):
+                            productos_modificados_lista.append({
+                                'id_producto': producto.idProducto,
+                                'nombre': producto.producto,
+                                'cantidad_anterior': detalle_anterior['cantidad'],
+                                'cantidad_nueva': producto.cantidad,
+                                'precio_anterior': detalle_anterior['precio_unitario'],
+                                'precio_nuevo': producto.pUnitario
+                            })
+
                     self.ordenes_compra_repo.actualizar_detalle_producto(
                         id_oc_detalle=producto.idOcDetalle,
                         cantidad=producto.cantidad,
@@ -149,6 +202,15 @@ class ActualizarOrdenCompra:
 
                 # Caso 3: Producto nuevo (sin idOcDetalle)
                 elif producto.idOcDetalle is None:
+                    # Guardar datos para auditoría
+                    productos_agregados_lista.append({
+                        'id_producto': producto.idProducto,
+                        'nombre': producto.producto,
+                        'cantidad': producto.cantidad,
+                        'precio_unitario': producto.pUnitario,
+                        'precio_total': producto.ptotal
+                    })
+
                     self.ordenes_compra_repo.crear_detalle_producto(
                         id_orden=request.idOrden,
                         id_producto=producto.idProducto,
@@ -185,18 +247,74 @@ class ActualizarOrdenCompra:
                 OrdenesCompraModel.id_orden == request.idOrden
             ).update({"total": str(total_orden)})
 
-            # Registrar auditoría de la actualización
-            cambios_detalle = f"{productos_eliminados} eliminados, {productos_actualizados} actualizados, {productos_creados} creados"
+            # Registrar auditoría de la actualización con nuevo servicio
+            # Obtener nombres de proveedor y contacto para auditoría
+            from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
+            from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
+
+            nombre_proveedor_anterior = None
+            nombre_proveedor_nuevo = None
+            nombre_contacto_anterior = None
+            nombre_contacto_nuevo = None
+
+            # Verificar si cambió el proveedor
+            if request.proveedor and id_proveedor_anterior != request.proveedor.idProveedor:
+                # Obtener nombre del proveedor anterior
+                prov_anterior = self.db.query(ProveedoresModel).filter(
+                    ProveedoresModel.id_proveedor == id_proveedor_anterior
+                ).first()
+                if prov_anterior:
+                    nombre_proveedor_anterior = prov_anterior.razon_social
+
+                # El nuevo ya viene en el request
+                nombre_proveedor_nuevo = request.proveedor.razonSocial
+
+            # Verificar si cambió el contacto
+            if request.proveedor and id_contacto_anterior != request.proveedor.idProveedorContacto:
+                # Obtener nombre del contacto anterior
+                cont_anterior = self.db.query(ProveedorContactosModel).filter(
+                    ProveedorContactosModel.id_proveedor_contacto == id_contacto_anterior
+                ).first()
+                if cont_anterior:
+                    nombre_contacto_anterior = cont_anterior.nombre_contacto
+
+                # El nuevo ya viene en el request
+                nombre_contacto_nuevo = request.proveedor.nombreContacto
+
+            # Otros cambios (moneda, pago, entrega)
+            otros_cambios = {}
+            if request.moneda and moneda_anterior != request.moneda:
+                otros_cambios['moneda'] = {'anterior': moneda_anterior, 'nuevo': request.moneda}
+            if request.pago and pago_anterior != request.pago:
+                otros_cambios['pago'] = {'anterior': pago_anterior, 'nuevo': request.pago}
+            if request.entrega and entrega_anterior != request.entrega:
+                otros_cambios['entrega'] = {'anterior': entrega_anterior, 'nuevo': request.entrega}
+
             self.auditoria_service.registrar_actualizacion_orden(
-                id_orden=request.idOrden,
+                id_orden_compra=request.idOrden,
                 numero_oc=numero_oc,
+                id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
+                # Cambios de proveedor (solo si cambió)
+                id_proveedor_anterior=id_proveedor_anterior if nombre_proveedor_anterior else None,
+                nombre_proveedor_anterior=nombre_proveedor_anterior,
+                id_proveedor_nuevo=request.proveedor.idProveedor if nombre_proveedor_nuevo else None,
+                nombre_proveedor_nuevo=nombre_proveedor_nuevo,
+                # Cambios de contacto (solo si cambió)
+                id_contacto_anterior=id_contacto_anterior if nombre_contacto_anterior else None,
+                nombre_contacto_anterior=nombre_contacto_anterior,
+                id_contacto_nuevo=request.proveedor.idProveedorContacto if nombre_contacto_nuevo else None,
+                nombre_contacto_nuevo=nombre_contacto_nuevo,
+                # Productos
+                productos_agregados=productos_agregados_lista if productos_agregados_lista else None,
+                productos_modificados=productos_modificados_lista if productos_modificados_lista else None,
+                productos_eliminados=productos_eliminados_lista if productos_eliminados_lista else None,
+                # Montos
                 monto_anterior=monto_anterior,
                 monto_nuevo=monto_nuevo,
-                cambios_detalle=cambios_detalle,
-                compra_id=compra_id,  # Ya tenemos el compra_id del eager loading
-                id_usuario=id_usuario
+                # Otros cambios
+                otros_cambios=otros_cambios if otros_cambios else None
             )
             logger.info(f"Auditoría registrada para orden {numero_oc}{' (con registro de compra '+str(compra_id)+')' if compra_id else ''}")
 

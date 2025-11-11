@@ -14,6 +14,7 @@ from .registro_compra_auditoria_model import RegistroCompraAuditoriaModel
 from .tasa_cambio_sunat_model import TasaCambioSunatModel
 
 from .ordenes_compra_model import OrdenesCompraModel
+from .ordenes_compra_auditoria_model import OrdenesCompraAuditoriaModel
 
 
 
@@ -52,6 +53,7 @@ __all__ = [
     "RegistroCompraAuditoriaModel",
     "TasaCambioSunatModel",
     "OrdenesCompraModel",
+    "OrdenesCompraAuditoriaModel",
     "ProveedoresModel",
     "ProveedorContactosModel",
     "ProveedorDetalleModel",
