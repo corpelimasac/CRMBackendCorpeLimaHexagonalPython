@@ -17,6 +17,7 @@ from app.core.use_cases.generar_oc.generar_orden_compra import GenerarOrdenCompr
 from app.core.use_cases.generar_oc.eliminar_orden_compra import EliminarOrdenCompra
 from app.core.use_cases.generar_oc.actualizar_orden_compra import ActualizarOrdenCompra
 from app.core.use_cases.generar_oc.obtener_orden_compra import ObtenerOrdenCompra
+from app.core.use_cases.generar_oc.listar_auditoria_orden_compra import ListarAuditoriaOrdenCompra
 from app.adapters.outbound.database.repositories.ordenes_compra_repository import OrdenesCompraRepository
 from app.adapters.outbound.database.repositories.cotizacion_version_repository import CotizacionVersionesRepository
 from app.adapters.outbound.excel.openpyxl_excel_generator import OpenPyXLExcelGenerator
@@ -77,6 +78,7 @@ def get_delete_purchase_order_use_case(db: Session = Depends(get_db)) -> Elimina
     s3_service = S3Service()
     return EliminarOrdenCompra(
         ordenes_compra_repo=ordenes_compra_repo,
+        db=db,
         s3_service=s3_service
     )
 
@@ -100,6 +102,12 @@ def get_obtener_purchase_order_use_case(db: Session = Depends(get_db)) -> Obtene
     """
     ordenes_compra_repo = OrdenesCompraRepository(db)
     return ObtenerOrdenCompra(ordenes_compra_repo=ordenes_compra_repo)
+
+def get_listar_auditoria_orden_compra_use_case(db: Session = Depends(get_db)) -> ListarAuditoriaOrdenCompra:
+    """
+    Construye y devuelve una instancia del caso de uso de listar auditorías de orden de compra con sus dependencias inyectadas.
+    """
+    return ListarAuditoriaOrdenCompra(db=db)
 
 def get_integracion_sunat_use_case() -> IntegracionSunatUC:
     import os

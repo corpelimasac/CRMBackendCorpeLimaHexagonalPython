@@ -290,18 +290,22 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 handler=handle_orden_compra_evento
             )
 
-            # Registrar auditoría de creación para cada orden
-            # Optimización: Obtener todas las órdenes en un solo query usando IN
-            import json
-            from app.adapters.outbound.database.models.registro_compra_auditoria_model import RegistroCompraAuditoriaModel
+            # Registrar auditoría de creación para cada orden usando el servicio específico
+            from app.core.services.ordenes_compra_auditoria_service import OrdenesCompraAuditoriaService
 
             id_cotizacion = first_order.id_cotizacion
             id_cotizacion_versiones = first_order.id_cotizacion_versiones
 
-            # Obtener todas las órdenes recién creadas en UN SOLO query
+            # Obtener todas las órdenes recién creadas en UN SOLO query con JOIN a proveedor y contacto
             contactos_ids = [order.id_proveedor_contacto for order in orders]
             ordenes_bd = (
-                self.db.query(OrdenesCompraModel)
+                self.db.query(
+                    OrdenesCompraModel,
+                    ProveedoresModel.razon_social,
+                    ProveedorContactosModel.nombre_contacto
+                )
+                .join(ProveedoresModel, OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor)
+                .join(ProveedorContactosModel, OrdenesCompraModel.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)
                 .filter(OrdenesCompraModel.id_cotizacion == id_cotizacion)
                 .filter(OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones)
                 .filter(OrdenesCompraModel.id_proveedor_contacto.in_(contactos_ids))
@@ -310,40 +314,70 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
             # Crear un map para acceso O(1)
             ordenes_map = {
-                orden.id_proveedor_contacto: orden
-                for orden in ordenes_bd
+                orden_tuple[0].id_proveedor_contacto: orden_tuple
+                for orden_tuple in ordenes_bd
             }
+
+            # Obtener detalles de productos para cada orden en UN SOLO query
+            orden_ids = [orden_tuple[0].id_orden for orden_tuple in ordenes_bd]
+            productos_detalles = (
+                self.db.query(
+                    OrdenesCompraDetallesModel,
+                    ProductosModel.nombre_producto
+                )
+                .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
+                .filter(OrdenesCompraDetallesModel.id_orden.in_(orden_ids))
+                .all()
+            )
+
+            # Agrupar productos por orden
+            productos_por_orden = {}
+            for detalle, nombre_producto in productos_detalles:
+                if detalle.id_orden not in productos_por_orden:
+                    productos_por_orden[detalle.id_orden] = []
+                productos_por_orden[detalle.id_orden].append({
+                    'id_producto': detalle.id_producto,
+                    'nombre': nombre_producto,
+                    'cantidad': detalle.cantidad,
+                    'precio_unitario': float(detalle.precio_unitario) if detalle.precio_unitario else 0.0,
+                    'precio_total': float(detalle.precio_total) if detalle.precio_total else 0.0
+                })
+
+            # Inicializar servicio de auditoría
+            auditoria_service = OrdenesCompraAuditoriaService(self.db)
 
             # Registrar auditoría para cada orden
             for order in orders:
-                orden_bd = ordenes_map.get(order.id_proveedor_contacto)
+                orden_tuple = ordenes_map.get(order.id_proveedor_contacto)
 
-                if orden_bd:
+                if orden_tuple:
+                    orden_bd, razon_social, nombre_contacto = orden_tuple
                     total_orden = float(orden_bd.total) if orden_bd.total else 0.0
-                    cantidad_productos = len(order.items)
+                    productos = productos_por_orden.get(orden_bd.id_orden, [])
 
-                    auditoria = RegistroCompraAuditoriaModel(
-                        fecha_evento=datetime.now(),
-                        tipo_operacion="CREACION",
-                        tipo_entidad="ORDEN_COMPRA",
+                    # Otros datos
+                    otros_datos = {
+                        'moneda': orden_bd.moneda,
+                        'pago': orden_bd.pago,
+                        'entrega': orden_bd.entrega,
+                        'consorcio': orden_bd.consorcio,
+                        'igv': orden_bd.igv
+                    }
+
+                    auditoria_service.registrar_creacion_orden(
+                        id_orden_compra=orden_bd.id_orden,
+                        numero_oc=orden_bd.correlative,
+                        id_usuario=order.id_usuario,
                         id_cotizacion=order.id_cotizacion,
                         id_cotizacion_versiones=order.id_cotizacion_versiones,
-                        id_usuario=order.id_usuario,
-                        datos_nuevos=json.dumps({
-                            'id_orden': orden_bd.id_orden,
-                            'numero_oc': orden_bd.correlative,
-                            'monto': total_orden,
-                            'cantidad_productos': cantidad_productos,
-                            'moneda': orden_bd.moneda,
-                            'pago': orden_bd.pago,
-                            'entrega': orden_bd.entrega
-                        }),
-                        monto_nuevo=total_orden,
-                        descripcion=f"Orden de compra {orden_bd.correlative} creada. Total: S/ {total_orden:,.2f}. Productos: {cantidad_productos}",
-                        razon="Creación de orden de compra"
+                        id_proveedor=orden_bd.id_proveedor,
+                        nombre_proveedor=razon_social,
+                        id_contacto=orden_bd.id_proveedor_contacto,
+                        nombre_contacto=nombre_contacto,
+                        productos=productos,
+                        monto_total=total_orden,
+                        otros_datos=otros_datos
                     )
-
-                    self.db.add(auditoria)
                     logger.debug(f"Auditoría registrada para orden {orden_bd.correlative}")
 
             # Ahora sí, hacer commit de TODO (órdenes, detalles, auditorías)
@@ -668,7 +702,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al eliminar orden de compra {id_orden}: {e}")
             raise
 
-    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None, auto_commit: bool = True) -> bool:
+    def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None, id_proveedor: int = None, id_proveedor_contacto: int = None, auto_commit: bool = True) -> bool:
         """
         Actualiza los campos básicos de una orden de compra
 
@@ -677,6 +711,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             moneda (str, optional): Nueva moneda
             pago (str, optional): Nueva forma de pago
             entrega (str, optional): Nuevas condiciones de entrega
+            id_proveedor (int, optional): Nuevo ID del proveedor
+            id_proveedor_contacto (int, optional): Nuevo ID del contacto del proveedor
             auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
         Returns:
@@ -702,6 +738,10 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 orden.pago = pago
             if entrega is not None:
                 orden.entrega = entrega
+            if id_proveedor is not None:
+                orden.id_proveedor = id_proveedor
+            if id_proveedor_contacto is not None:
+                orden.id_proveedor_contacto = id_proveedor_contacto
 
             if auto_commit:
                 self.db.commit()

@@ -1,6 +1,9 @@
 import logging
+from typing import Optional
+from sqlalchemy.orm import Session
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
+from app.core.services.ordenes_compra_auditoria_service import OrdenesCompraAuditoriaService
 from fastapi import HTTPException
 from app.config.settings import get_settings
 
@@ -25,17 +28,23 @@ class EliminarOrdenCompra:
     def __init__(
         self,
         ordenes_compra_repo: OrdenesCompraRepositoryPort,
-        s3_service: S3Service = None
+        db: Session,
+        s3_service: S3Service = None,
+        auditoria_service: Optional[OrdenesCompraAuditoriaService] = None
     ):
         """
         Inicializa el caso de uso con las dependencias necesarias.
 
         Args:
             ordenes_compra_repo: Repositorio de órdenes de compra
+            db: Sesión de base de datos
             s3_service: Servicio de S3 (opcional, se crea uno nuevo si no se proporciona)
+            auditoria_service: Servicio de auditoría (opcional, se crea uno nuevo si no se proporciona)
         """
         self.ordenes_compra_repo = ordenes_compra_repo
+        self.db = db
         self.s3_service = s3_service or S3Service()
+        self.auditoria_service = auditoria_service or OrdenesCompraAuditoriaService(db)
         # Centralizar lectura del bucket desde settings para evitar desincronización
         self.bucket = get_settings().aws_bucket_name
 
@@ -55,16 +64,52 @@ class EliminarOrdenCompra:
         try:
             logger.info(f"Iniciando eliminación de orden de compra ID: {id_orden}")
 
-            # 1. Obtener la orden de compra
-            orden = self.ordenes_compra_repo.obtener_orden_por_id(id_orden)
+            # 1. Obtener la orden de compra con todos los datos necesarios para auditoría
+            from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
+            from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
+            from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
+            from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
+            from app.adapters.outbound.database.models.productos_model import ProductosModel
 
-            if not orden:
+            orden_query = (
+                self.db.query(
+                    OrdenesCompraModel,
+                    ProveedoresModel.razon_social,
+                    ProveedorContactosModel.nombre_contacto
+                )
+                .join(ProveedoresModel, OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor)
+                .join(ProveedorContactosModel, OrdenesCompraModel.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)
+                .filter(OrdenesCompraModel.id_orden == id_orden)
+                .first()
+            )
+
+            if not orden_query:
                 raise HTTPException(
                     status_code=404,
                     detail=f"Orden de compra con ID {id_orden} no encontrada"
                 )
 
-            logger.info(f"Orden encontrada: {orden.correlative if hasattr(orden, 'correlative') else id_orden}")
+            orden, razon_social_proveedor, nombre_contacto = orden_query
+            logger.info(f"Orden encontrada: {orden.correlative}")
+
+            # Obtener detalles de productos antes de eliminar
+            productos_detalles = (
+                self.db.query(
+                    OrdenesCompraDetallesModel,
+                    ProductosModel.nombre_producto
+                )
+                .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
+                .filter(OrdenesCompraDetallesModel.id_orden == id_orden)
+                .all()
+            )
+
+            productos_lista = [{
+                'id_producto': detalle.id_producto,
+                'nombre': nombre_producto,
+                'cantidad': detalle.cantidad,
+                'precio_unitario': float(detalle.precio_unitario) if detalle.precio_unitario else 0.0,
+                'precio_total': float(detalle.precio_total) if detalle.precio_total else 0.0
+            } for detalle, nombre_producto in productos_detalles]
 
             # 2. Eliminar archivo de S3 si existe
             s3_deleted = False
@@ -84,7 +129,26 @@ class EliminarOrdenCompra:
             else:
                 logger.info("La orden no tiene archivo asociado en S3")
 
-            # 3. Eliminar la orden de compra de la base de datos
+            # 3. Registrar auditoría ANTES de eliminar la orden
+            monto_total = float(orden.total) if orden.total else 0.0
+
+            self.auditoria_service.registrar_eliminacion_orden(
+                id_orden_compra=orden.id_orden,
+                numero_oc=orden.correlative,
+                id_usuario=orden.id_usuario,
+                id_cotizacion=orden.id_cotizacion,
+                id_cotizacion_versiones=orden.id_cotizacion_versiones,
+                id_proveedor=orden.id_proveedor,
+                nombre_proveedor=razon_social_proveedor,
+                id_contacto=orden.id_proveedor_contacto,
+                nombre_contacto=nombre_contacto,
+                productos=productos_lista,
+                monto_total=monto_total,
+                razon="Eliminación manual de orden de compra"
+            )
+            logger.info(f"Auditoría de eliminación registrada para orden {orden.correlative}")
+
+            # 4. Eliminar la orden de compra de la base de datos
             logger.info(f"Eliminando orden de compra de la base de datos")
             self.ordenes_compra_repo.eliminar_orden(id_orden)
             logger.info(f"Orden de compra {id_orden} eliminada exitosamente de la base de datos")

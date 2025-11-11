@@ -99,6 +99,20 @@ class GenerarOrdenCompra:
         ordenes_a_guardar = []
 
         for order_data in request.data:
+            # Validar que todos los productos tengan id_producto_cotizacion
+            productos_sin_id = [
+                producto.idProducto
+                for producto in order_data.productos
+                if producto.idProductoCotizacion is None
+            ]
+
+            if productos_sin_id:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Error: Los siguientes productos no tienen id_producto_cotizacion: {productos_sin_id}. "
+                           f"Este campo es obligatorio para relacionar los productos con la cotización."
+                )
+
             # Mapear los productos del DTO a la entidad OrdenesCompraItem
             items_entidad = [
                 OrdenesCompraItem(

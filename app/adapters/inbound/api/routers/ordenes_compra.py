@@ -1,20 +1,27 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import (
     OrdenesCompraRequest,
     ActualizarOrdenCompraRequest,
     OrdenCompraDetalleResponse
 )
+from app.adapters.inbound.api.schemas.ordenes_compra_auditoria_schemas import (
+    ListarAuditoriasResponse
+)
 from app.core.use_cases.generar_oc.generar_orden_compra import GenerarOrdenCompra
 from app.core.use_cases.generar_oc.eliminar_orden_compra import EliminarOrdenCompra
 from app.core.use_cases.generar_oc.actualizar_orden_compra import ActualizarOrdenCompra
 from app.core.use_cases.generar_oc.obtener_orden_compra import ObtenerOrdenCompra
+from app.core.use_cases.generar_oc.listar_auditoria_orden_compra import ListarAuditoriaOrdenCompra
 from fastapi import Depends
 from app.dependencies import (
     get_generate_purchase_order_use_case,
     get_delete_purchase_order_use_case,
     get_update_purchase_order_use_case,
-    get_obtener_purchase_order_use_case
+    get_obtener_purchase_order_use_case,
+    get_listar_auditoria_orden_compra_use_case
 )
+from typing import Optional
+from datetime import datetime
 import logging
 
 logger = logging.getLogger(__name__)
@@ -161,5 +168,87 @@ async def delete_order(
         return resultado
     except Exception as e:
         _log_error("delete_order", e)
+        raise
+
+
+@router.get("/auditoria/logs", response_model=ListarAuditoriasResponse)
+def get_auditoria_logs(
+    id_orden_compra: Optional[int] = Query(None, description="Filtrar por ID de orden de compra"),
+    numero_oc: Optional[str] = Query(None, description="Filtrar por número de OC (correlativo) - búsqueda parcial"),
+    tipo_operacion: Optional[str] = Query(None, description="Filtrar por tipo de operación (CREACION, ACTUALIZACION, ELIMINACION)"),
+    id_usuario: Optional[int] = Query(None, description="Filtrar por ID de usuario"),
+    proveedor: Optional[str] = Query(None, description="Buscar por razón social del proveedor - búsqueda parcial"),
+    ruc_proveedor: Optional[str] = Query(None, description="Filtrar por RUC del proveedor"),
+    contacto: Optional[str] = Query(None, description="Buscar por nombre del contacto - búsqueda parcial"),
+    fecha_desde: Optional[datetime] = Query(None, description="Filtrar desde esta fecha (formato: YYYY-MM-DD)"),
+    fecha_hasta: Optional[datetime] = Query(None, description="Filtrar hasta esta fecha (formato: YYYY-MM-DD)"),
+    page: int = Query(1, description="Número de página", ge=1),
+    page_size: int = Query(10, description="Cantidad de registros por página", ge=1, le=100),
+    use_case: ListarAuditoriaOrdenCompra = Depends(get_listar_auditoria_orden_compra_use_case)
+):
+    """
+    Obtiene el historial de auditoría de órdenes de compra.
+
+    Este endpoint retorna:
+    - Historial completo de cambios (creación, actualización, eliminación)
+    - Cambios en proveedor y contacto (antiguo → nuevo)
+    - Cambios en productos (agregados, modificados, eliminados)
+    - Cambios en montos
+    - Descripción legible de cada cambio
+
+    Filtros disponibles:
+    - id_orden_compra: Filtrar por una orden específica
+    - numero_oc: Buscar por número de OC/correlativo (búsqueda parcial)
+    - tipo_operacion: Filtrar por tipo (CREACION, ACTUALIZACION, ELIMINACION)
+    - id_usuario: Filtrar por usuario que realizó el cambio
+    - proveedor: Buscar por razón social del proveedor (búsqueda parcial)
+    - ruc_proveedor: Filtrar por RUC exacto del proveedor
+    - contacto: Buscar por nombre del contacto (búsqueda parcial)
+    - fecha_desde/fecha_hasta: Rango de fechas
+
+    Paginación:
+    - page: Número de página (default: 1)
+    - page_size: Cantidad de registros por página (default: 10, max: 100)
+
+    Returns:
+        ListarAuditoriasResponse: Lista de auditorías con metadatos de paginación
+
+    Examples:
+        GET /ordenes-compra/auditoria/logs
+        GET /ordenes-compra/auditoria/logs?page=2&page_size=20
+        GET /ordenes-compra/auditoria/logs?id_orden_compra=123
+        GET /ordenes-compra/auditoria/logs?numero_oc=OC-0001
+        GET /ordenes-compra/auditoria/logs?tipo_operacion=ACTUALIZACION
+        GET /ordenes-compra/auditoria/logs?proveedor=EQUIPAMIENTOS
+        GET /ordenes-compra/auditoria/logs?ruc_proveedor=20601580820
+        GET /ordenes-compra/auditoria/logs?contacto=Juan
+        GET /ordenes-compra/auditoria/logs?fecha_desde=2025-01-01&fecha_hasta=2025-12-31
+        GET /ordenes-compra/auditoria/logs?proveedor=GRUPO&tipo_operacion=CREACION&page=1&page_size=10
+    """
+    try:
+        _log_inicio("📋 INICIO - Listado de auditorías de órdenes de compra")
+        logger.info(f"Filtros: id_orden={id_orden_compra}, numero_oc={numero_oc}, tipo={tipo_operacion}, "
+                   f"usuario={id_usuario}, proveedor={proveedor}, ruc={ruc_proveedor}, contacto={contacto}, "
+                   f"página={page}, tamaño={page_size}")
+
+        resultado = use_case.execute(
+            id_orden_compra=id_orden_compra,
+            numero_oc=numero_oc,
+            tipo_operacion=tipo_operacion,
+            id_usuario=id_usuario,
+            proveedor=proveedor,
+            ruc_proveedor=ruc_proveedor,
+            contacto=contacto,
+            fecha_desde=fecha_desde,
+            fecha_hasta=fecha_hasta,
+            page=page,
+            page_size=page_size
+        )
+
+        _log_fin(f"✅ FIN - Página {resultado['page']}/{resultado['total_pages']} - "
+                f"{len(resultado['items'])} auditorías retornadas de {resultado['total']} totales")
+        return resultado
+    except Exception as e:
+        _log_error("get_auditoria_logs", e)
         raise
 
