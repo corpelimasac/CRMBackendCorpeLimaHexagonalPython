@@ -75,7 +75,7 @@ class EliminarOrdenCompra:
                 self.db.query(
                     OrdenesCompraModel,
                     ProveedoresModel.razon_social,
-                    ProveedorContactosModel.nombre_contacto
+                    ProveedorContactosModel.nombre
                 )
                 .join(ProveedoresModel, OrdenesCompraModel.id_proveedor == ProveedoresModel.id_proveedor)
                 .join(ProveedorContactosModel, OrdenesCompraModel.id_proveedor_contacto == ProveedorContactosModel.id_proveedor_contacto)
@@ -96,7 +96,7 @@ class EliminarOrdenCompra:
             productos_detalles = (
                 self.db.query(
                     OrdenesCompraDetallesModel,
-                    ProductosModel.nombre_producto
+                    ProductosModel.nombre
                 )
                 .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
                 .filter(OrdenesCompraDetallesModel.id_orden == id_orden)

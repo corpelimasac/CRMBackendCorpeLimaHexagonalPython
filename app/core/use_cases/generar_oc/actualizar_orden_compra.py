@@ -146,7 +146,7 @@ class ActualizarOrdenCompra:
                 from app.adapters.outbound.database.models.productos_model import ProductosModel
 
                 detalles_anteriores = (
-                    self.db.query(OrdenesCompraDetallesModel, ProductosModel.nombre_producto)
+                    self.db.query(OrdenesCompraDetallesModel, ProductosModel.nombre)
                     .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
                     .filter(OrdenesCompraDetallesModel.id_orden == request.idOrden)
                     .all()
@@ -276,7 +276,7 @@ class ActualizarOrdenCompra:
                     ProveedorContactosModel.id_proveedor_contacto == id_contacto_anterior
                 ).first()
                 if cont_anterior:
-                    nombre_contacto_anterior = cont_anterior.nombre_contacto
+                    nombre_contacto_anterior = cont_anterior.nombre
 
                 # El nuevo ya viene en el request
                 nombre_contacto_nuevo = request.proveedor.nombreContacto
