@@ -134,17 +134,13 @@ class EliminarOrdenCompra:
 
             self.auditoria_service.registrar_eliminacion_orden(
                 id_orden_compra=orden.id_orden,
-                numero_oc=orden.correlative,
                 id_usuario=orden.id_usuario,
                 id_cotizacion=orden.id_cotizacion,
                 id_cotizacion_versiones=orden.id_cotizacion_versiones,
                 id_proveedor=orden.id_proveedor,
-                nombre_proveedor=razon_social_proveedor,
                 id_contacto=orden.id_proveedor_contacto,
-                nombre_contacto=nombre_contacto,
                 productos=productos_lista,
-                monto_total=monto_total,
-                razon="Eliminación manual de orden de compra"
+                monto_total=monto_total
             )
             logger.info(f"Auditoría de eliminación registrada para orden {orden.correlative}")
 

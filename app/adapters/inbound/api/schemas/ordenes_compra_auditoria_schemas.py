@@ -1,52 +1,34 @@
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 
 
 class OrdenCompraAuditoriaResponse(BaseModel):
-    """Schema para la respuesta de una auditoría de orden de compra"""
+    """Schema optimizado para la respuesta de una auditoría de orden de compra"""
 
     id_auditoria: int = Field(..., description="ID de la auditoría")
     fecha_evento: datetime = Field(..., description="Fecha y hora del evento")
     tipo_operacion: str = Field(..., description="Tipo de operación: CREACION, ACTUALIZACION, ELIMINACION")
 
-    # Datos de la orden
-    id_orden_compra: int = Field(..., description="ID de la orden de compra")
-    numero_oc: str = Field(..., description="Número correlativo de la OC")
-    id_usuario: int = Field(..., description="ID del usuario que realizó el cambio")
+    # Datos obtenidos por JOIN (no almacenados directamente)
+    numero_oc: str = Field(..., description="Número correlativo de la OC (obtenido por JOIN)")
+    nombre_usuario: str = Field(..., description="Nombre completo del usuario (obtenido por JOIN)")
 
-    # Relaciones
-    id_cotizacion: Optional[int] = Field(None, description="ID de la cotización")
-    id_cotizacion_versiones: Optional[int] = Field(None, description="ID de la versión de cotización")
+    # Cambios en formato concatenado con nombres resueltos
+    cambio_proveedor: Optional[str] = Field(None, description="Cambio de proveedor: 'PROVEEDOR A ----> PROVEEDOR B' o solo nombre")
+    cambio_contacto: Optional[str] = Field(None, description="Cambio de contacto: 'CONTACTO A ----> CONTACTO B' o solo nombre")
+    cambio_monto: Optional[str] = Field(None, description="Cambio de monto: 'anterior ----> nuevo'")
 
-    # Cambios de proveedor
-    id_proveedor_anterior: Optional[int] = Field(None, description="ID del proveedor anterior")
-    proveedor_anterior: Optional[str] = Field(None, description="Nombre del proveedor anterior")
-    id_proveedor_nuevo: Optional[int] = Field(None, description="ID del proveedor nuevo")
-    proveedor_nuevo: Optional[str] = Field(None, description="Nombre del proveedor nuevo")
-
-    # Cambios de contacto
-    id_contacto_anterior: Optional[int] = Field(None, description="ID del contacto anterior")
-    contacto_anterior: Optional[str] = Field(None, description="Nombre del contacto anterior")
-    id_contacto_nuevo: Optional[int] = Field(None, description="ID del contacto nuevo")
-    contacto_nuevo: Optional[str] = Field(None, description="Nombre del contacto nuevo")
-
-    # Productos (JSON parseado)
-    productos_agregados: Optional[str] = Field(None, description="Productos agregados (JSON)")
-    productos_modificados: Optional[str] = Field(None, description="Productos modificados (JSON)")
-    productos_eliminados: Optional[str] = Field(None, description="Productos eliminados (JSON)")
-
-    # Montos
-    monto_anterior: Optional[float] = Field(None, description="Monto anterior")
-    monto_nuevo: Optional[float] = Field(None, description="Monto nuevo")
+    # Productos con nombres resueltos
+    productos_agregados: Optional[List[str]] = Field(None, description="Lista de nombres de productos agregados")
+    productos_modificados: Optional[List[Dict[str, Any]]] = Field(None, description="Productos modificados con detalles")
+    productos_eliminados: Optional[List[str]] = Field(None, description="Lista de nombres de productos eliminados")
 
     # Otros cambios
-    cambios_adicionales: Optional[str] = Field(None, description="Otros cambios (JSON)")
+    cambios_adicionales: Optional[Dict[str, str]] = Field(None, description="Otros cambios en formato 'anterior ----> nuevo'")
 
     # Descripción
     descripcion: str = Field(..., description="Descripción legible del cambio")
-    razon: Optional[str] = Field(None, description="Razón del cambio")
-    metadata_json: Optional[str] = Field(None, description="Metadata adicional (JSON)")
 
     class Config:
         from_attributes = True

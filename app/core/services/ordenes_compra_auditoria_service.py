@@ -1,9 +1,8 @@
 """
-Servicio de auditoría para órdenes de compra.
+Servicio optimizado de auditoría para órdenes de compra.
 
-Este servicio registra todos los cambios (creación, actualización, eliminación)
-en las órdenes de compra para mantener un historial completo de auditoría,
-incluyendo cambios en proveedor, contacto y productos.
+Este servicio registra cambios guardando solo IDs y concatenando valores
+en formato "anterior ----> nuevo". Los nombres se obtienen mediante JOINs.
 """
 import json
 import logging
@@ -17,12 +16,12 @@ logger = logging.getLogger(__name__)
 
 class OrdenesCompraAuditoriaService:
     """
-    Servicio para registrar cambios detallados en órdenes de compra.
+    Servicio para registrar cambios en órdenes de compra con formato optimizado.
 
-    Este servicio registra:
-    - Creación de órdenes
-    - Actualización de órdenes (con cambios de proveedor, contacto y productos)
-    - Eliminación de órdenes
+    Formato de datos:
+    - IDs sin nombres (nombres se obtienen por JOIN)
+    - Cambios concatenados: "anterior ----> nuevo"
+    - Productos solo como IDs
     """
 
     def __init__(self, db: Session):
@@ -31,15 +30,12 @@ class OrdenesCompraAuditoriaService:
     def registrar_creacion_orden(
         self,
         id_orden_compra: int,
-        numero_oc: str,
         id_usuario: int,
         id_cotizacion: int,
         id_cotizacion_versiones: int,
         id_proveedor: int,
-        nombre_proveedor: str,
         id_contacto: int,
-        nombre_contacto: str,
-        productos: List[Dict[str, Any]],
+        productos: List[Dict[str, Any]],  # productos con id_producto
         monto_total: float,
         otros_datos: Optional[Dict[str, Any]] = None
     ) -> None:
@@ -48,87 +44,69 @@ class OrdenesCompraAuditoriaService:
 
         Args:
             id_orden_compra: ID de la orden creada
-            numero_oc: Número correlativo de la OC
             id_usuario: ID del usuario que creó la orden
             id_cotizacion: ID de la cotización
             id_cotizacion_versiones: ID de la versión de cotización
             id_proveedor: ID del proveedor
-            nombre_proveedor: Razón social del proveedor
             id_contacto: ID del contacto
-            nombre_contacto: Nombre del contacto
-            productos: Lista de productos agregados
+            productos: Lista de productos con id_producto
             monto_total: Monto total de la orden
-            otros_datos: Otros datos opcionales (moneda, pago, entrega, etc.)
+            otros_datos: Otros datos (moneda, pago, entrega)
         """
         try:
             cantidad_productos = len(productos)
 
             descripcion = (
-                f"Orden de compra {numero_oc} creada. "
-                f"Proveedor: {nombre_proveedor}. "
-                f"Contacto: {nombre_contacto}. "
-                f"Productos: {cantidad_productos}. "
-                f"Total: S/ {monto_total:,.2f}"
+                f"Orden de compra creada con {cantidad_productos} producto(s). "
+                f"Monto total: S/ {monto_total:,.2f}"
             )
 
-            # Preparar JSON de productos agregados
-            productos_json = json.dumps([{
-                'id_producto': p.get('id_producto'),
-                'nombre': p.get('nombre', 'N/A'),
-                'cantidad': p.get('cantidad'),
-                'precio_unitario': float(p.get('precio_unitario', 0)),
-                'precio_total': float(p.get('precio_total', 0))
-            } for p in productos], default=str)
+            # Solo guardar IDs de productos agregados
+            ids_productos = [str(p.get('id_producto')) for p in productos]
+            productos_agregados_json = json.dumps(ids_productos) if ids_productos else None
 
+            # Preparar cambios adicionales si existen
+            cambios_adicionales_json = None
+            if otros_datos:
+                cambios_adicionales_json = json.dumps(otros_datos)
+
+            # Crear registro de auditoría
             auditoria = OrdenesCompraAuditoriaModel(
-                fecha_evento=datetime.now(),
                 tipo_operacion="CREACION",
+                fecha_evento=datetime.now(),
                 id_orden_compra=id_orden_compra,
-                numero_oc=numero_oc,
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
-                # Datos del proveedor (solo nuevo en creación)
-                id_proveedor_nuevo=id_proveedor,
-                proveedor_nuevo=nombre_proveedor,
-                # Datos del contacto (solo nuevo en creación)
-                id_contacto_nuevo=id_contacto,
-                contacto_nuevo=nombre_contacto,
-                # Productos agregados
-                productos_agregados=productos_json,
-                # Monto
-                monto_nuevo=monto_total,
-                # Descripción
-                descripcion=descripcion,
-                # Metadata adicional
-                cambios_adicionales=json.dumps(otros_datos, default=str) if otros_datos else None
+                # Solo IDs, sin flechas para creación
+                cambio_proveedor=str(id_proveedor),
+                cambio_contacto=str(id_contacto),
+                cambio_monto=str(monto_total),
+                productos_agregados=productos_agregados_json,
+                cambios_adicionales=cambios_adicionales_json,
+                descripcion=descripcion
             )
 
             self.db.add(auditoria)
-            logger.info(f"Auditoría registrada (pendiente commit): Creación de OC {numero_oc}")
+            logger.info(f"✅ Auditoría de creación registrada para orden {id_orden_compra}")
 
         except Exception as e:
-            logger.error(f"Error al registrar auditoría de creación de OC: {e}", exc_info=True)
+            logger.error(f"❌ Error al registrar auditoría de creación: {e}", exc_info=True)
             raise
 
     def registrar_actualizacion_orden(
         self,
         id_orden_compra: int,
-        numero_oc: str,
         id_usuario: int,
         id_cotizacion: int,
         id_cotizacion_versiones: int,
-        # Datos de proveedor (opcional si cambió)
+        # Proveedor (solo si cambió)
         id_proveedor_anterior: Optional[int] = None,
-        nombre_proveedor_anterior: Optional[str] = None,
         id_proveedor_nuevo: Optional[int] = None,
-        nombre_proveedor_nuevo: Optional[str] = None,
-        # Datos de contacto (opcional si cambió)
+        # Contacto (solo si cambió)
         id_contacto_anterior: Optional[int] = None,
-        nombre_contacto_anterior: Optional[str] = None,
         id_contacto_nuevo: Optional[int] = None,
-        nombre_contacto_nuevo: Optional[str] = None,
-        # Cambios en productos
+        # Productos
         productos_agregados: Optional[List[Dict[str, Any]]] = None,
         productos_modificados: Optional[List[Dict[str, Any]]] = None,
         productos_eliminados: Optional[List[Dict[str, Any]]] = None,
@@ -136,230 +114,180 @@ class OrdenesCompraAuditoriaService:
         monto_anterior: Optional[float] = None,
         monto_nuevo: Optional[float] = None,
         # Otros cambios
-        otros_cambios: Optional[Dict[str, Any]] = None
+        otros_cambios: Optional[Dict[str, Dict[str, Any]]] = None
     ) -> None:
         """
         Registra la actualización de una orden de compra.
 
         Args:
             id_orden_compra: ID de la orden actualizada
-            numero_oc: Número correlativo de la OC
-            id_usuario: ID del usuario que actualizó
+            id_usuario: ID del usuario que realizó la actualización
             id_cotizacion: ID de la cotización
             id_cotizacion_versiones: ID de la versión de cotización
             id_proveedor_anterior: ID del proveedor anterior (si cambió)
-            nombre_proveedor_anterior: Nombre del proveedor anterior (si cambió)
             id_proveedor_nuevo: ID del proveedor nuevo (si cambió)
-            nombre_proveedor_nuevo: Nombre del proveedor nuevo (si cambió)
             id_contacto_anterior: ID del contacto anterior (si cambió)
-            nombre_contacto_anterior: Nombre del contacto anterior (si cambió)
             id_contacto_nuevo: ID del contacto nuevo (si cambió)
-            nombre_contacto_nuevo: Nombre del contacto nuevo (si cambió)
-            productos_agregados: Lista de productos agregados
-            productos_modificados: Lista de productos modificados
-            productos_eliminados: Lista de productos eliminados
+            productos_agregados: Lista de productos agregados con id_producto
+            productos_modificados: Lista de productos modificados con id_producto y cambios
+            productos_eliminados: Lista de productos eliminados con id_producto
             monto_anterior: Monto anterior
             monto_nuevo: Monto nuevo
-            otros_cambios: Otros cambios (moneda, pago, entrega)
+            otros_cambios: Otros cambios (moneda, pago, entrega) en formato {'campo': {'anterior': X, 'nuevo': Y}}
         """
         try:
-            # Construir descripción dinámica
-            cambios_descripcion = []
+            # Construir descripción
+            cambios_desc = []
 
-            # Cambio de proveedor
             if id_proveedor_anterior and id_proveedor_nuevo and id_proveedor_anterior != id_proveedor_nuevo:
-                cambios_descripcion.append(
-                    f"Proveedor: {nombre_proveedor_anterior} → {nombre_proveedor_nuevo}"
-                )
+                cambios_desc.append("proveedor")
 
-            # Cambio de contacto
             if id_contacto_anterior and id_contacto_nuevo and id_contacto_anterior != id_contacto_nuevo:
-                cambios_descripcion.append(
-                    f"Contacto: {nombre_contacto_anterior} → {nombre_contacto_nuevo}"
-                )
+                cambios_desc.append("contacto")
 
-            # Cambios en productos
-            if productos_agregados and len(productos_agregados) > 0:
-                cambios_descripcion.append(f"{len(productos_agregados)} producto(s) agregado(s)")
+            if productos_agregados:
+                cambios_desc.append(f"{len(productos_agregados)} producto(s) agregado(s)")
 
-            if productos_modificados and len(productos_modificados) > 0:
-                cambios_descripcion.append(f"{len(productos_modificados)} producto(s) modificado(s)")
+            if productos_modificados:
+                cambios_desc.append(f"{len(productos_modificados)} producto(s) modificado(s)")
 
-            if productos_eliminados and len(productos_eliminados) > 0:
-                cambios_descripcion.append(f"{len(productos_eliminados)} producto(s) eliminado(s)")
+            if productos_eliminados:
+                cambios_desc.append(f"{len(productos_eliminados)} producto(s) eliminado(s)")
 
-            # Cambio de monto
-            if monto_anterior is not None and monto_nuevo is not None and monto_anterior != monto_nuevo:
-                diferencia = monto_nuevo - monto_anterior
-                signo = "+" if diferencia > 0 else ""
-                cambios_descripcion.append(
-                    f"Total: S/ {monto_anterior:,.2f} → S/ {monto_nuevo:,.2f} ({signo}S/ {diferencia:,.2f})"
-                )
+            if monto_anterior is not None and monto_nuevo is not None:
+                cambios_desc.append("monto")
 
-            # Otros cambios
             if otros_cambios:
-                for campo, valores in otros_cambios.items():
-                    if isinstance(valores, dict) and 'anterior' in valores and 'nuevo' in valores:
-                        if valores['anterior'] != valores['nuevo']:
-                            cambios_descripcion.append(
-                                f"{campo.capitalize()}: {valores['anterior']} → {valores['nuevo']}"
-                            )
+                for campo in otros_cambios.keys():
+                    cambios_desc.append(campo)
 
-            descripcion = (
-                f"Orden de compra {numero_oc} actualizada. "
-                f"Cambios: {'. '.join(cambios_descripcion) if cambios_descripcion else 'Sin cambios significativos'}"
-            )
+            descripcion = f"Orden de compra actualizada. Cambios: {', '.join(cambios_desc) if cambios_desc else 'sin cambios detectados'}"
 
-            # Preparar JSON de productos
+            # Formato concatenado para cambios
+            cambio_proveedor_str = None
+            if id_proveedor_anterior and id_proveedor_nuevo and id_proveedor_anterior != id_proveedor_nuevo:
+                cambio_proveedor_str = f"{id_proveedor_anterior} ----> {id_proveedor_nuevo}"
+
+            cambio_contacto_str = None
+            if id_contacto_anterior and id_contacto_nuevo and id_contacto_anterior != id_contacto_nuevo:
+                cambio_contacto_str = f"{id_contacto_anterior} ----> {id_contacto_nuevo}"
+
+            cambio_monto_str = None
+            if monto_anterior is not None and monto_nuevo is not None:
+                cambio_monto_str = f"{monto_anterior} ----> {monto_nuevo}"
+
+            # Productos: solo IDs
             productos_agregados_json = None
             if productos_agregados:
-                productos_agregados_json = json.dumps([{
-                    'id_producto': p.get('id_producto'),
-                    'nombre': p.get('nombre', 'N/A'),
-                    'cantidad': p.get('cantidad'),
-                    'precio_unitario': float(p.get('precio_unitario', 0)),
-                    'precio_total': float(p.get('precio_total', 0))
-                } for p in productos_agregados], default=str)
-
-            productos_modificados_json = None
-            if productos_modificados:
-                productos_modificados_json = json.dumps([{
-                    'id_producto': p.get('id_producto'),
-                    'nombre': p.get('nombre', 'N/A'),
-                    'cantidad_anterior': p.get('cantidad_anterior'),
-                    'cantidad_nueva': p.get('cantidad_nueva'),
-                    'precio_anterior': float(p.get('precio_anterior', 0)),
-                    'precio_nuevo': float(p.get('precio_nuevo', 0))
-                } for p in productos_modificados], default=str)
+                ids = [str(p.get('id_producto')) for p in productos_agregados]
+                productos_agregados_json = json.dumps(ids)
 
             productos_eliminados_json = None
             if productos_eliminados:
-                productos_eliminados_json = json.dumps([{
-                    'id_producto': p.get('id_producto'),
-                    'nombre': p.get('nombre', 'N/A'),
-                    'cantidad': p.get('cantidad'),
-                    'precio_total': float(p.get('precio_total', 0))
-                } for p in productos_eliminados], default=str)
+                ids = [str(p.get('id_producto')) for p in productos_eliminados]
+                productos_eliminados_json = json.dumps(ids)
 
+            productos_modificados_json = None
+            if productos_modificados:
+                # Guardar id y descripción de cambios
+                mods = []
+                for p in productos_modificados:
+                    mods.append({
+                        'id_producto': p.get('id_producto'),
+                        'cambios': p.get('cambios', {})
+                    })
+                productos_modificados_json = json.dumps(mods)
+
+            # Otros cambios en formato concatenado
+            cambios_adicionales_json = None
+            if otros_cambios:
+                cambios_concatenados = {}
+                for campo, valores in otros_cambios.items():
+                    anterior = valores.get('anterior', '')
+                    nuevo = valores.get('nuevo', '')
+                    cambios_concatenados[campo] = f"{anterior} ----> {nuevo}"
+                cambios_adicionales_json = json.dumps(cambios_concatenados)
+
+            # Crear registro de auditoría
             auditoria = OrdenesCompraAuditoriaModel(
-                fecha_evento=datetime.now(),
                 tipo_operacion="ACTUALIZACION",
+                fecha_evento=datetime.now(),
                 id_orden_compra=id_orden_compra,
-                numero_oc=numero_oc,
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
-                # Cambios de proveedor
-                id_proveedor_anterior=id_proveedor_anterior,
-                proveedor_anterior=nombre_proveedor_anterior,
-                id_proveedor_nuevo=id_proveedor_nuevo,
-                proveedor_nuevo=nombre_proveedor_nuevo,
-                # Cambios de contacto
-                id_contacto_anterior=id_contacto_anterior,
-                contacto_anterior=nombre_contacto_anterior,
-                id_contacto_nuevo=id_contacto_nuevo,
-                contacto_nuevo=nombre_contacto_nuevo,
-                # Productos
+                cambio_proveedor=cambio_proveedor_str,
+                cambio_contacto=cambio_contacto_str,
+                cambio_monto=cambio_monto_str,
                 productos_agregados=productos_agregados_json,
                 productos_modificados=productos_modificados_json,
                 productos_eliminados=productos_eliminados_json,
-                # Montos
-                monto_anterior=monto_anterior,
-                monto_nuevo=monto_nuevo,
-                # Descripción
-                descripcion=descripcion,
-                # Otros cambios
-                cambios_adicionales=json.dumps(otros_cambios, default=str) if otros_cambios else None
+                cambios_adicionales=cambios_adicionales_json,
+                descripcion=descripcion
             )
 
             self.db.add(auditoria)
-            logger.info(f"Auditoría registrada (pendiente commit): Actualización de OC {numero_oc}")
+            logger.info(f"✅ Auditoría de actualización registrada para orden {id_orden_compra}")
 
         except Exception as e:
-            logger.error(f"Error al registrar auditoría de actualización de OC: {e}", exc_info=True)
+            logger.error(f"❌ Error al registrar auditoría de actualización: {e}", exc_info=True)
             raise
 
     def registrar_eliminacion_orden(
         self,
         id_orden_compra: int,
-        numero_oc: str,
         id_usuario: int,
         id_cotizacion: int,
         id_cotizacion_versiones: int,
         id_proveedor: int,
-        nombre_proveedor: str,
         id_contacto: int,
-        nombre_contacto: str,
         productos: List[Dict[str, Any]],
-        monto_total: float,
-        razon: Optional[str] = None
+        monto_total: float
     ) -> None:
         """
         Registra la eliminación de una orden de compra.
 
         Args:
             id_orden_compra: ID de la orden eliminada
-            numero_oc: Número correlativo de la OC
-            id_usuario: ID del usuario que eliminó
+            id_usuario: ID del usuario que eliminó la orden
             id_cotizacion: ID de la cotización
             id_cotizacion_versiones: ID de la versión de cotización
             id_proveedor: ID del proveedor
-            nombre_proveedor: Razón social del proveedor
             id_contacto: ID del contacto
-            nombre_contacto: Nombre del contacto
             productos: Lista de productos que tenía la orden
-            monto_total: Monto total de la orden
-            razon: Razón de la eliminación (opcional)
+            monto_total: Monto total de la orden eliminada
         """
         try:
             cantidad_productos = len(productos)
 
             descripcion = (
-                f"Orden de compra {numero_oc} eliminada. "
-                f"Proveedor: {nombre_proveedor}. "
-                f"Contacto: {nombre_contacto}. "
-                f"Productos eliminados: {cantidad_productos}. "
-                f"Total: S/ {monto_total:,.2f}"
+                f"Orden de compra eliminada. "
+                f"Tenía {cantidad_productos} producto(s). "
+                f"Monto total: S/ {monto_total:,.2f}"
             )
 
-            if razon:
-                descripcion += f". Razón: {razon}"
+            # Todos los productos pasan a eliminados
+            ids_productos = [str(p.get('id_producto')) for p in productos]
+            productos_eliminados_json = json.dumps(ids_productos) if ids_productos else None
 
-            # Preparar JSON de productos eliminados
-            productos_json = json.dumps([{
-                'id_producto': p.get('id_producto'),
-                'nombre': p.get('nombre', 'N/A'),
-                'cantidad': p.get('cantidad'),
-                'precio_unitario': float(p.get('precio_unitario', 0)),
-                'precio_total': float(p.get('precio_total', 0))
-            } for p in productos], default=str)
-
+            # Crear registro de auditoría
             auditoria = OrdenesCompraAuditoriaModel(
-                fecha_evento=datetime.now(),
                 tipo_operacion="ELIMINACION",
+                fecha_evento=datetime.now(),
                 id_orden_compra=id_orden_compra,
-                numero_oc=numero_oc,
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
-                # Datos del proveedor (solo anterior en eliminación)
-                id_proveedor_anterior=id_proveedor,
-                proveedor_anterior=nombre_proveedor,
-                # Datos del contacto (solo anterior en eliminación)
-                id_contacto_anterior=id_contacto,
-                contacto_anterior=nombre_contacto,
-                # Productos eliminados
-                productos_eliminados=productos_json,
-                # Monto
-                monto_anterior=monto_total,
-                # Descripción
-                descripcion=descripcion,
-                razon=razon
+                cambio_proveedor=str(id_proveedor),
+                cambio_contacto=str(id_contacto),
+                cambio_monto=str(monto_total),
+                productos_eliminados=productos_eliminados_json,
+                descripcion=descripcion
             )
 
             self.db.add(auditoria)
-            logger.info(f"Auditoría registrada (pendiente commit): Eliminación de OC {numero_oc}")
+            logger.info(f"✅ Auditoría de eliminación registrada para orden {id_orden_compra}")
 
         except Exception as e:
-            logger.error(f"Error al registrar auditoría de eliminación de OC: {e}", exc_info=True)
+            logger.error(f"❌ Error al registrar auditoría de eliminación: {e}", exc_info=True)
             raise
