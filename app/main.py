@@ -10,6 +10,7 @@ import sys
 from app.adapters.inbound.api.routers import health, dolar, upload_router, cotizacion_finalizada_router, proveedores_router, ordenes_compra, integracion_sunat
 from app.config.settings import get_settings
 from app.core.infrastructure.events.event_dispatcher import get_event_dispatcher
+from app.core.infrastructure.scheduler.dolar_scheduler import dolar_scheduler
 
 # Configurar logging
 settings = get_settings()
@@ -47,9 +48,12 @@ async def lifespan(app: FastAPI):
     logger.info(startup_msg)
 
     event_dispatcher = get_event_dispatcher()
-    workers_msg = f"✅ EventDispatcher inicializado con {event_dispatcher.executor._max_workers} workers"
+    workers_msg = f"✅ EventDispatcher inicializado con {event_dispatcher.executor.max_workers} workers"
     print(workers_msg)
     logger.info(workers_msg)
+
+    # Iniciar el scheduler del dólar
+    dolar_scheduler.start()
 
     yield
 
@@ -60,6 +64,9 @@ async def lifespan(app: FastAPI):
 """
     print(shutdown_msg)
     logger.info(shutdown_msg)
+
+    # Detener el scheduler del dólar
+    dolar_scheduler.shutdown()
 
     event_dispatcher.shutdown(wait=True)
 

@@ -276,7 +276,7 @@ class ActualizarOrdenCompra:
                     ProveedorContactosModel.id_proveedor_contacto == id_contacto_anterior
                 ).first()
                 if cont_anterior:
-                    nombre_contacto_anterior = cont_anterior.nombre_contacto
+                    nombre_contacto_anterior = cont_anterior.nombre
 
                 # El nuevo ya viene en el request
                 nombre_contacto_nuevo = request.proveedor.nombreContacto
