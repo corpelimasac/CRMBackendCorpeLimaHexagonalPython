@@ -1,36 +1,164 @@
 import logging
 import math
-from typing import Optional, Dict, Any
+import json
+from typing import Optional, Dict, Any, List
 from datetime import datetime
 from sqlalchemy.orm import Session
-from sqlalchemy import and_, desc, or_
+from sqlalchemy import and_, desc, or_, func
 from app.adapters.outbound.database.models.ordenes_compra_auditoria_model import OrdenesCompraAuditoriaModel
+from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
+from app.adapters.outbound.database.models.usuarios_model import UsuariosModel
+from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
+from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
+from app.adapters.outbound.database.models.productos_model import ProductosModel
 
 logger = logging.getLogger(__name__)
 
 
 class ListarAuditoriaOrdenCompra:
     """
-    Caso de uso para listar auditorías de órdenes de compra.
+    Caso de uso optimizado para listar auditorías de órdenes de compra.
 
     Este caso de uso:
-    1. Permite filtrar por diferentes criterios (OC, proveedor, contacto, RUC, tipo operación, fechas)
-    2. Soporta paginación por número de página
-    3. Retorna el historial completo de cambios en las órdenes de compra
-
-    Siguiendo la arquitectura hexagonal:
-    - Capa de aplicación (use case)
-    - Se comunica con la base de datos directamente (consulta simple)
+    1. Hace JOINs para obtener datos relacionados (numero_oc, usuario, etc.)
+    2. Parsea campos concatenados (cambio_proveedor, cambio_contacto, cambio_monto)
+    3. Resuelve nombres de proveedores, contactos y productos mediante consultas
+    4. Retorna datos en formato optimizado
     """
 
     def __init__(self, db: Session):
-        """
-        Inicializa el caso de uso con las dependencias necesarias.
-
-        Args:
-            db: Sesión de base de datos
-        """
         self.db = db
+
+    def _parsear_cambio_concatenado(self, campo: Optional[str]) -> tuple:
+        """
+        Parsea un campo concatenado con formato 'id_anterior ----> id_nuevo' o solo 'id'
+
+        Returns:
+            tuple: (id_anterior o None, id_nuevo o None)
+        """
+        if not campo:
+            return None, None
+
+        if ' ----> ' in campo:
+            partes = campo.split(' ----> ')
+            try:
+                return int(partes[0].strip()), int(partes[1].strip())
+            except:
+                return None, None
+        else:
+            try:
+                return None, int(campo.strip())
+            except:
+                return None, None
+
+    def _obtener_nombre_proveedor(self, id_proveedor: Optional[int]) -> str:
+        """Obtiene el nombre del proveedor por su ID"""
+        if not id_proveedor:
+            return ""
+
+        proveedor = self.db.query(ProveedoresModel).filter(
+            ProveedoresModel.id_proveedor == id_proveedor
+        ).first()
+
+        return proveedor.razon_social if proveedor else f"ID:{id_proveedor}"
+
+    def _obtener_nombre_contacto(self, id_contacto: Optional[int]) -> str:
+        """Obtiene el nombre del contacto por su ID"""
+        if not id_contacto:
+            return ""
+
+        contacto = self.db.query(ProveedorContactosModel).filter(
+            ProveedorContactosModel.id_proveedor_contacto == id_contacto
+        ).first()
+
+        return contacto.nombre if contacto else f"ID:{id_contacto}"
+
+    def _resolver_cambio_proveedor(self, cambio_proveedor: Optional[str]) -> Optional[str]:
+        """Resuelve el cambio de proveedor de IDs a nombres"""
+        if not cambio_proveedor:
+            return None
+
+        id_anterior, id_nuevo = self._parsear_cambio_concatenado(cambio_proveedor)
+
+        if id_anterior and id_nuevo:
+            nombre_anterior = self._obtener_nombre_proveedor(id_anterior)
+            nombre_nuevo = self._obtener_nombre_proveedor(id_nuevo)
+            return f"{nombre_anterior} ----> {nombre_nuevo}"
+        elif id_nuevo:
+            return self._obtener_nombre_proveedor(id_nuevo)
+        else:
+            return None
+
+    def _resolver_cambio_contacto(self, cambio_contacto: Optional[str]) -> Optional[str]:
+        """Resuelve el cambio de contacto de IDs a nombres"""
+        if not cambio_contacto:
+            return None
+
+        id_anterior, id_nuevo = self._parsear_cambio_concatenado(cambio_contacto)
+
+        if id_anterior and id_nuevo:
+            nombre_anterior = self._obtener_nombre_contacto(id_anterior)
+            nombre_nuevo = self._obtener_nombre_contacto(id_nuevo)
+            return f"{nombre_anterior} ----> {nombre_nuevo}"
+        elif id_nuevo:
+            return self._obtener_nombre_contacto(id_nuevo)
+        else:
+            return None
+
+    def _resolver_productos(self, productos_json: Optional[str]) -> Optional[List[str]]:
+        """Resuelve una lista de IDs de productos a nombres"""
+        if not productos_json:
+            return None
+
+        try:
+            ids = json.loads(productos_json)
+            if not ids:
+                return None
+
+            # Consultar todos los nombres de una vez
+            productos = self.db.query(ProductosModel).filter(
+                ProductosModel.id_producto.in_(ids)
+            ).all()
+
+            nombres = [p.nombre for p in productos]
+            return nombres if nombres else None
+
+        except Exception as e:
+            logger.error(f"Error al parsear productos JSON: {e}")
+            return None
+
+    def _resolver_productos_modificados(self, productos_json: Optional[str]) -> Optional[List[Dict[str, Any]]]:
+        """Resuelve productos modificados incluyendo sus cambios"""
+        if not productos_json:
+            return None
+
+        try:
+            productos_data = json.loads(productos_json)
+            if not productos_data:
+                return None
+
+            resultado = []
+            for item in productos_data:
+                id_producto = item.get('id_producto')
+                cambios = item.get('cambios', {})
+
+                # Obtener nombre del producto
+                producto = self.db.query(ProductosModel).filter(
+                    ProductosModel.id_producto == id_producto
+                ).first()
+
+                nombre = producto.nombre if producto else f"ID:{id_producto}"
+
+                resultado.append({
+                    'nombre': nombre,
+                    'cambios': cambios
+                })
+
+            return resultado if resultado else None
+
+        except Exception as e:
+            logger.error(f"Error al parsear productos modificados JSON: {e}")
+            return None
 
     def execute(
         self,
@@ -47,146 +175,148 @@ class ListarAuditoriaOrdenCompra:
         page_size: int = 10
     ) -> Dict[str, Any]:
         """
-        Ejecuta el caso de uso de listado de auditorías.
+        Ejecuta el caso de uso de listado de auditorías con JOINs.
 
         Args:
             id_orden_compra: Filtrar por ID de orden de compra
-            numero_oc: Filtrar por número de OC (correlativo) - búsqueda parcial
-            tipo_operacion: Filtrar por tipo de operación (CREACION, ACTUALIZACION, ELIMINACION)
-            usuario: Buscar por nombre del usuario - búsqueda parcial
-            proveedor: Buscar por razón social del proveedor - búsqueda parcial
+            numero_oc: Filtrar por número de OC
+            tipo_operacion: Filtrar por tipo de operación
+            usuario: Buscar por nombre del usuario
+            proveedor: Buscar por razón social del proveedor
             ruc_proveedor: Filtrar por RUC del proveedor
-            contacto: Buscar por nombre del contacto - búsqueda parcial
+            contacto: Buscar por nombre del contacto
             fecha_desde: Filtrar desde esta fecha
             fecha_hasta: Filtrar hasta esta fecha
-            page: Número de página (default: 1)
-            page_size: Cantidad de registros por página (default: 10, max: 100)
+            page: Número de página
+            page_size: Cantidad de registros por página
 
         Returns:
-            dict: Diccionario con el total de registros, items y metadatos de paginación
+            dict: Diccionario con auditorías procesadas y metadatos de paginación
         """
         try:
-            logger.info(f"Listando auditorías de órdenes de compra - Página {page}, tamaño {page_size}")
-            logger.info(f"Filtros: id_orden={id_orden_compra}, numero_oc={numero_oc}, tipo={tipo_operacion}, "
-                       f"usuario={usuario}, proveedor={proveedor}, ruc={ruc_proveedor}, contacto={contacto}")
+            logger.info(f"Listando auditorías - Página {page}, tamaño {page_size}")
 
-            # Construir query base
-            query = self.db.query(OrdenesCompraAuditoriaModel)
+            # Query base con JOINs
+            query = (
+                self.db.query(
+                    OrdenesCompraAuditoriaModel,
+                    OrdenesCompraModel.correlative.label("numero_oc"),
+                    func.concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).label("nombre_usuario")
+                )
+                .join(OrdenesCompraModel, OrdenesCompraAuditoriaModel.id_orden_compra == OrdenesCompraModel.id_orden)
+                .join(UsuariosModel, OrdenesCompraAuditoriaModel.id_usuario == UsuariosModel.id_usuario)
+            )
 
             # Aplicar filtros
             filters = []
 
-            # Filtro por ID de orden
             if id_orden_compra is not None:
                 filters.append(OrdenesCompraAuditoriaModel.id_orden_compra == id_orden_compra)
 
-            # Filtro por número de OC (correlativo) - búsqueda parcial
             if numero_oc:
-                filters.append(OrdenesCompraAuditoriaModel.numero_oc.like(f"%{numero_oc}%"))
+                filters.append(OrdenesCompraModel.correlative.like(f"%{numero_oc}%"))
 
-            # Filtro por tipo de operación
             if tipo_operacion:
                 filters.append(OrdenesCompraAuditoriaModel.tipo_operacion == tipo_operacion.upper())
 
-            # Filtro por usuario - buscar por nombre de usuario, nombre o apellido
             if usuario:
-                from app.adapters.outbound.database.models.usuarios_model import UsuariosModel
-                from sqlalchemy import func, concat
+                usuario_filter = or_(
+                    UsuariosModel.username.like(f"%{usuario}%"),
+                    UsuariosModel.nombre.like(f"%{usuario}%"),
+                    UsuariosModel.apellido.like(f"%{usuario}%"),
+                    func.concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).like(f"%{usuario}%")
+                )
+                filters.append(usuario_filter)
 
-                # Subquery para buscar IDs de usuarios que coincidan con el nombre
-                usuario_ids_subquery = self.db.query(UsuariosModel.id_usuario).filter(
-                    or_(
-                        UsuariosModel.username.like(f"%{usuario}%"),
-                        UsuariosModel.nombre.like(f"%{usuario}%"),
-                        UsuariosModel.apellido.like(f"%{usuario}%"),
-                        concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).like(f"%{usuario}%")
-                    )
-                ).scalar_subquery()
-
-                filters.append(OrdenesCompraAuditoriaModel.id_usuario.in_(
-                    self.db.query(UsuariosModel.id_usuario).filter(
-                        or_(
-                            UsuariosModel.username.like(f"%{usuario}%"),
-                            UsuariosModel.nombre.like(f"%{usuario}%"),
-                            UsuariosModel.apellido.like(f"%{usuario}%"),
-                            concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).like(f"%{usuario}%")
-                        )
-                    )
-                ))
-
-            # Filtro por proveedor - buscar en campos anterior y nuevo
+            # Filtros de proveedor/contacto: buscar en campos concatenados
             if proveedor:
-                proveedor_filter = or_(
-                    OrdenesCompraAuditoriaModel.proveedor_anterior.like(f"%{proveedor}%"),
-                    OrdenesCompraAuditoriaModel.proveedor_nuevo.like(f"%{proveedor}%")
-                )
-                filters.append(proveedor_filter)
+                filters.append(OrdenesCompraAuditoriaModel.cambio_proveedor.like(f"%{proveedor}%"))
 
-            # Filtro por RUC del proveedor
-            # Nota: El RUC no está directamente en la tabla de auditoría,
-            # pero podemos buscar por el nombre del proveedor asociado al RUC
             if ruc_proveedor:
-                # Necesitamos hacer un subquery para buscar el nombre del proveedor por RUC
-                from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
-                proveedor_subquery = self.db.query(ProveedoresModel.razon_social).filter(
+                # Obtener nombre del proveedor por RUC y buscar en cambio_proveedor
+                proveedor_obj = self.db.query(ProveedoresModel).filter(
                     ProveedoresModel.ruc == ruc_proveedor
-                ).scalar_subquery()
+                ).first()
+                if proveedor_obj:
+                    filters.append(OrdenesCompraAuditoriaModel.cambio_proveedor.like(f"%{proveedor_obj.id_proveedor}%"))
 
-                ruc_filter = or_(
-                    OrdenesCompraAuditoriaModel.proveedor_anterior.in_([proveedor_subquery]),
-                    OrdenesCompraAuditoriaModel.proveedor_nuevo.in_([proveedor_subquery])
-                )
-                filters.append(ruc_filter)
-
-            # Filtro por contacto - buscar en campos anterior y nuevo
             if contacto:
-                contacto_filter = or_(
-                    OrdenesCompraAuditoriaModel.contacto_anterior.like(f"%{contacto}%"),
-                    OrdenesCompraAuditoriaModel.contacto_nuevo.like(f"%{contacto}%")
-                )
-                filters.append(contacto_filter)
+                filters.append(OrdenesCompraAuditoriaModel.cambio_contacto.like(f"%{contacto}%"))
 
-            # Filtro por rango de fechas
             if fecha_desde:
                 filters.append(OrdenesCompraAuditoriaModel.fecha_evento >= fecha_desde)
 
             if fecha_hasta:
                 filters.append(OrdenesCompraAuditoriaModel.fecha_evento <= fecha_hasta)
 
-            # Aplicar filtros si existen
             if filters:
                 query = query.filter(and_(*filters))
 
-            # Obtener total de registros
+            # Total de registros
             total = query.count()
 
-            # Calcular total de páginas
+            # Calcular paginación
             total_pages = math.ceil(total / page_size) if total > 0 else 1
 
-            # Validar que la página solicitada no exceda el total
             if page > total_pages and total > 0:
-                logger.warning(f"Página {page} excede total de páginas {total_pages}, ajustando a última página")
+                logger.warning(f"Página {page} excede total {total_pages}, ajustando")
                 page = total_pages
 
-            # Calcular offset basado en el número de página
             offset = (page - 1) * page_size
 
-            # Ordenar por fecha descendente (más reciente primero)
+            # Ordenar y paginar
             query = query.order_by(desc(OrdenesCompraAuditoriaModel.fecha_evento))
+            resultados = query.limit(page_size).offset(offset).all()
 
-            # Aplicar paginación
-            auditorias = query.limit(page_size).offset(offset).all()
+            # Procesar resultados y resolver nombres
+            items_procesados = []
+            for auditoria, numero_oc, nombre_usuario in resultados:
+                # Resolver cambios concatenados
+                cambio_proveedor_resuelto = self._resolver_cambio_proveedor(auditoria.cambio_proveedor)
+                cambio_contacto_resuelto = self._resolver_cambio_contacto(auditoria.cambio_contacto)
 
-            logger.info(f"✅ Se encontraron {total} registros totales, retornando {len(auditorias)} en página {page}/{total_pages}")
+                # Resolver productos
+                productos_agregados_nombres = self._resolver_productos(auditoria.productos_agregados)
+                productos_modificados_data = self._resolver_productos_modificados(auditoria.productos_modificados)
+                productos_eliminados_nombres = self._resolver_productos(auditoria.productos_eliminados)
+
+                # Parsear cambios adicionales
+                cambios_adicionales_dict = None
+                if auditoria.cambios_adicionales:
+                    try:
+                        cambios_adicionales_dict = json.loads(auditoria.cambios_adicionales)
+                    except:
+                        pass
+
+                # Construir item de respuesta
+                item = {
+                    "id_auditoria": auditoria.id_auditoria,
+                    "fecha_evento": auditoria.fecha_evento,
+                    "tipo_operacion": auditoria.tipo_operacion,
+                    "numero_oc": numero_oc,
+                    "nombre_usuario": nombre_usuario,
+                    "cambio_proveedor": cambio_proveedor_resuelto,
+                    "cambio_contacto": cambio_contacto_resuelto,
+                    "cambio_monto": auditoria.cambio_monto,
+                    "productos_agregados": productos_agregados_nombres,
+                    "productos_modificados": productos_modificados_data,
+                    "productos_eliminados": productos_eliminados_nombres,
+                    "cambios_adicionales": cambios_adicionales_dict,
+                    "descripcion": auditoria.descripcion
+                }
+
+                items_procesados.append(item)
+
+            logger.info(f"✅ {len(items_procesados)} auditorías procesadas de {total} totales")
 
             return {
                 "total": total,
-                "items": auditorias,
+                "items": items_procesados,
                 "page": page,
                 "page_size": page_size,
                 "total_pages": total_pages
             }
 
         except Exception as e:
-            logger.error(f"❌ Error al listar auditorías de órdenes de compra: {e}", exc_info=True)
+            logger.error(f"❌ Error al listar auditorías: {e}", exc_info=True)
             raise

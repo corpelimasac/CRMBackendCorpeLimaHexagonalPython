@@ -292,20 +292,15 @@ class ActualizarOrdenCompra:
 
             self.auditoria_service.registrar_actualizacion_orden(
                 id_orden_compra=request.idOrden,
-                numero_oc=numero_oc,
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
                 # Cambios de proveedor (solo si cambió)
                 id_proveedor_anterior=id_proveedor_anterior if nombre_proveedor_anterior else None,
-                nombre_proveedor_anterior=nombre_proveedor_anterior,
                 id_proveedor_nuevo=request.proveedor.idProveedor if nombre_proveedor_nuevo else None,
-                nombre_proveedor_nuevo=nombre_proveedor_nuevo,
                 # Cambios de contacto (solo si cambió)
                 id_contacto_anterior=id_contacto_anterior if nombre_contacto_anterior else None,
-                nombre_contacto_anterior=nombre_contacto_anterior,
                 id_contacto_nuevo=request.proveedor.idProveedorContacto if nombre_contacto_nuevo else None,
-                nombre_contacto_nuevo=nombre_contacto_nuevo,
                 # Productos
                 productos_agregados=productos_agregados_lista if productos_agregados_lista else None,
                 productos_modificados=productos_modificados_lista if productos_modificados_lista else None,

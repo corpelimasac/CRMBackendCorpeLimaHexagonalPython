@@ -366,14 +366,11 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
                     auditoria_service.registrar_creacion_orden(
                         id_orden_compra=orden_bd.id_orden,
-                        numero_oc=orden_bd.correlative,
                         id_usuario=order.id_usuario,
                         id_cotizacion=order.id_cotizacion,
                         id_cotizacion_versiones=order.id_cotizacion_versiones,
                         id_proveedor=orden_bd.id_proveedor,
-                        nombre_proveedor=razon_social,
                         id_contacto=orden_bd.id_proveedor_contacto,
-                        nombre_contacto=nombre_contacto,
                         productos=productos,
                         monto_total=total_orden,
                         otros_datos=otros_datos

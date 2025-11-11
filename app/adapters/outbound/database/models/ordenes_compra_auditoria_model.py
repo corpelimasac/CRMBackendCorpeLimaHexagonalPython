@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, Text, Numeric, BIGINT, ForeignKey
+from sqlalchemy import Column, String, DateTime, Text, BIGINT, ForeignKey
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .base import Base
@@ -6,13 +6,11 @@ from .base import Base
 
 class OrdenesCompraAuditoriaModel(Base):
     """
-    Modelo para auditar cambios en órdenes de compra.
+    Modelo optimizado para auditar cambios en órdenes de compra.
 
     Registra todos los cambios (creación, actualización, eliminación)
-    en las órdenes de compra, incluyendo:
-    - Cambios en proveedor
-    - Cambios en contacto
-    - Productos agregados, modificados y eliminados
+    guardando solo IDs y obteniendo nombres mediante JOINs.
+    Los cambios se almacenan en formato concatenado: "anterior ----> nuevo"
     """
     __tablename__ = "ordenes_compra_auditoria"
 
@@ -26,12 +24,10 @@ class OrdenesCompraAuditoriaModel(Base):
     tipo_operacion = Column(String(50), nullable=False,
                            comment="CREACION, ACTUALIZACION, ELIMINACION")
 
-    # Referencias de la orden de compra
-    id_orden_compra = Column(BIGINT, nullable=False, index=True,
+    # Referencias principales (numero_oc se obtiene por JOIN)
+    id_orden_compra = Column(BIGINT, ForeignKey("ordenes_compra.id_orden"),
+                            nullable=False, index=True,
                             comment="ID de la orden de compra")
-
-    numero_oc = Column(String(20), nullable=False, index=True,
-                      comment="Número correlativo de la OC")
 
     # Usuario que realizó el cambio
     id_usuario = Column(BIGINT, ForeignKey("usuarios.id_usuario"), nullable=False,
@@ -44,71 +40,44 @@ class OrdenesCompraAuditoriaModel(Base):
     id_cotizacion_versiones = Column(BIGINT, ForeignKey("cotizaciones_versiones.id_cotizacion_versiones"),
                                      nullable=True, comment="ID de la versión de cotización")
 
-    # Cambios de proveedor (registrar antiguo -> nuevo)
-    id_proveedor_anterior = Column(BIGINT, nullable=True,
-                                   comment="ID del proveedor anterior")
+    # Cambios concatenados (formato: "id_anterior ----> id_nuevo" o solo "id" si es creación)
+    cambio_proveedor = Column(String(255), nullable=True,
+                             comment="Cambio de proveedor. Formato: 'id_anterior ----> id_nuevo' o solo 'id'")
 
-    proveedor_anterior = Column(String(255), nullable=True,
-                               comment="Razón social del proveedor anterior")
+    cambio_contacto = Column(String(255), nullable=True,
+                            comment="Cambio de contacto. Formato: 'id_anterior ----> id_nuevo' o solo 'id'")
 
-    id_proveedor_nuevo = Column(BIGINT, nullable=True,
-                                comment="ID del proveedor nuevo")
+    cambio_monto = Column(String(100), nullable=True,
+                         comment="Cambio de monto. Formato: 'monto_anterior ----> monto_nuevo' o solo 'monto'")
 
-    proveedor_nuevo = Column(String(255), nullable=True,
-                            comment="Razón social del proveedor nuevo")
-
-    # Cambios de contacto (registrar antiguo -> nuevo)
-    id_contacto_anterior = Column(BIGINT, nullable=True,
-                                  comment="ID del contacto anterior")
-
-    contacto_anterior = Column(String(255), nullable=True,
-                              comment="Nombre del contacto anterior")
-
-    id_contacto_nuevo = Column(BIGINT, nullable=True,
-                               comment="ID del contacto nuevo")
-
-    contacto_nuevo = Column(String(255), nullable=True,
-                           comment="Nombre del contacto nuevo")
-
-    # Cambios en productos (formato JSON)
+    # Productos (JSON con solo IDs)
     productos_agregados = Column(Text, nullable=True,
-                                comment="Productos agregados en formato JSON")
+                                comment="Lista de IDs de productos agregados: [id1, id2, ...]")
 
     productos_modificados = Column(Text, nullable=True,
-                                  comment="Productos modificados en formato JSON")
+                                  comment="Cambios en productos: [{'id': X, 'cambios': {...}}]")
 
     productos_eliminados = Column(Text, nullable=True,
-                                 comment="Productos eliminados en formato JSON")
+                                 comment="Lista de IDs de productos eliminados: [id1, id2, ...]")
 
-    # Montos para consultas rápidas
-    monto_anterior = Column(Numeric(12, 2), nullable=True,
-                           comment="Monto total anterior")
-
-    monto_nuevo = Column(Numeric(12, 2), nullable=True,
-                        comment="Monto total nuevo")
-
-    # Otros cambios
+    # Otros cambios (moneda, pago, entrega) en formato concatenado
     cambios_adicionales = Column(Text, nullable=True,
-                                comment="Otros cambios (moneda, pago, entrega) en JSON")
+                                comment="Otros cambios en JSON. Formato: {'campo': 'anterior ----> nuevo'}")
 
     # Descripción legible del cambio
     descripcion = Column(Text, nullable=False,
                         comment="Descripción legible del cambio")
 
-    # Razón del cambio (opcional)
-    razon = Column(Text, nullable=True,
-                  comment="Razón del cambio (si se proporciona)")
-
-    # Metadata adicional
-    metadata_json = Column(Text, nullable=True,
-                          comment="Información adicional en JSON")
-
-    # Relaciones
-    usuario = relationship("UsuariosModel", foreign_keys=[id_usuario], backref="auditorias_ordenes_compra")
-    cotizacion = relationship("CotizacionModel", foreign_keys=[id_cotizacion], backref="auditorias_ordenes_compra")
+    # Relaciones (para obtener datos mediante JOIN)
+    orden_compra = relationship("OrdenesCompraModel", foreign_keys=[id_orden_compra],
+                               backref="auditorias")
+    usuario = relationship("UsuariosModel", foreign_keys=[id_usuario],
+                          backref="auditorias_ordenes_compra")
+    cotizacion = relationship("CotizacionModel", foreign_keys=[id_cotizacion],
+                             backref="auditorias_ordenes_compra")
     cotizacion_version = relationship("CotizacionesVersionesModel",
                                      foreign_keys=[id_cotizacion_versiones],
                                      backref="auditorias_ordenes_compra")
 
     def __repr__(self):
-        return f"<OrdenesCompraAuditoria(id={self.id_auditoria}, tipo={self.tipo_operacion}, oc={self.numero_oc}, fecha={self.fecha_evento})>"
+        return f"<OrdenesCompraAuditoria(id={self.id_auditoria}, tipo={self.tipo_operacion}, orden={self.id_orden_compra}, fecha={self.fecha_evento})>"
