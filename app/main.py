@@ -48,7 +48,7 @@ async def lifespan(app: FastAPI):
     logger.info(startup_msg)
 
     event_dispatcher = get_event_dispatcher()
-    workers_msg = f"✅ EventDispatcher inicializado con {event_dispatcher.executor.max_workers} workers"
+    workers_msg = f"✅ EventDispatcher inicializado con {event_dispatcher.executor._max_workers} workers"
     print(workers_msg)
     logger.info(workers_msg)
 
