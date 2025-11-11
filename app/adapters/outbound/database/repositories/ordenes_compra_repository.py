@@ -323,7 +323,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             productos_detalles = (
                 self.db.query(
                     OrdenesCompraDetallesModel,
-                    ProductosModel.nombre_producto
+                    ProductosModel.nombre
                 )
                 .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
                 .filter(OrdenesCompraDetallesModel.id_orden.in_(orden_ids))

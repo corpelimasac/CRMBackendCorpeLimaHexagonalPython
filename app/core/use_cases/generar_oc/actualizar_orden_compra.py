@@ -146,7 +146,7 @@ class ActualizarOrdenCompra:
                 from app.adapters.outbound.database.models.productos_model import ProductosModel
 
                 detalles_anteriores = (
-                    self.db.query(OrdenesCompraDetallesModel, ProductosModel.nombre_producto)
+                    self.db.query(OrdenesCompraDetallesModel, ProductosModel.nombre)
                     .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
                     .filter(OrdenesCompraDetallesModel.id_orden == request.idOrden)
                     .all()
