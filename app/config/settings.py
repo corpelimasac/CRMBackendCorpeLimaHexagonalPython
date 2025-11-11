@@ -1,7 +1,6 @@
 """
 Configuración de la aplicación usando Pydantic Settings
 """
-import os
 from functools import lru_cache
 from pathlib import Path
 from typing import Literal, Optional

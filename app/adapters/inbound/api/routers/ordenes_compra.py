@@ -176,7 +176,7 @@ def get_auditoria_logs(
     id_orden_compra: Optional[int] = Query(None, description="Filtrar por ID de orden de compra"),
     numero_oc: Optional[str] = Query(None, description="Filtrar por número de OC (correlativo) - búsqueda parcial"),
     tipo_operacion: Optional[str] = Query(None, description="Filtrar por tipo de operación (CREACION, ACTUALIZACION, ELIMINACION)"),
-    id_usuario: Optional[int] = Query(None, description="Filtrar por ID de usuario"),
+    usuario: Optional[str] = Query(None, description="Buscar por nombre del usuario - búsqueda parcial"),
     proveedor: Optional[str] = Query(None, description="Buscar por razón social del proveedor - búsqueda parcial"),
     ruc_proveedor: Optional[str] = Query(None, description="Filtrar por RUC del proveedor"),
     contacto: Optional[str] = Query(None, description="Buscar por nombre del contacto - búsqueda parcial"),
@@ -228,14 +228,14 @@ def get_auditoria_logs(
     try:
         _log_inicio("📋 INICIO - Listado de auditorías de órdenes de compra")
         logger.info(f"Filtros: id_orden={id_orden_compra}, numero_oc={numero_oc}, tipo={tipo_operacion}, "
-                   f"usuario={id_usuario}, proveedor={proveedor}, ruc={ruc_proveedor}, contacto={contacto}, "
+                   f"usuario={usuario}, proveedor={proveedor}, ruc={ruc_proveedor}, contacto={contacto}, "
                    f"página={page}, tamaño={page_size}")
 
         resultado = use_case.execute(
             id_orden_compra=id_orden_compra,
             numero_oc=numero_oc,
             tipo_operacion=tipo_operacion,
-            id_usuario=id_usuario,
+            usuario=usuario,
             proveedor=proveedor,
             ruc_proveedor=ruc_proveedor,
             contacto=contacto,

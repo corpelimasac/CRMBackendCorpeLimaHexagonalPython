@@ -37,7 +37,7 @@ class ListarAuditoriaOrdenCompra:
         id_orden_compra: Optional[int] = None,
         numero_oc: Optional[str] = None,
         tipo_operacion: Optional[str] = None,
-        id_usuario: Optional[int] = None,
+        usuario: Optional[str] = None,
         proveedor: Optional[str] = None,
         ruc_proveedor: Optional[str] = None,
         contacto: Optional[str] = None,
@@ -53,7 +53,7 @@ class ListarAuditoriaOrdenCompra:
             id_orden_compra: Filtrar por ID de orden de compra
             numero_oc: Filtrar por número de OC (correlativo) - búsqueda parcial
             tipo_operacion: Filtrar por tipo de operación (CREACION, ACTUALIZACION, ELIMINACION)
-            id_usuario: Filtrar por usuario
+            usuario: Buscar por nombre del usuario - búsqueda parcial
             proveedor: Buscar por razón social del proveedor - búsqueda parcial
             ruc_proveedor: Filtrar por RUC del proveedor
             contacto: Buscar por nombre del contacto - búsqueda parcial
@@ -68,7 +68,7 @@ class ListarAuditoriaOrdenCompra:
         try:
             logger.info(f"Listando auditorías de órdenes de compra - Página {page}, tamaño {page_size}")
             logger.info(f"Filtros: id_orden={id_orden_compra}, numero_oc={numero_oc}, tipo={tipo_operacion}, "
-                       f"proveedor={proveedor}, ruc={ruc_proveedor}, contacto={contacto}")
+                       f"usuario={usuario}, proveedor={proveedor}, ruc={ruc_proveedor}, contacto={contacto}")
 
             # Construir query base
             query = self.db.query(OrdenesCompraAuditoriaModel)
@@ -88,9 +88,31 @@ class ListarAuditoriaOrdenCompra:
             if tipo_operacion:
                 filters.append(OrdenesCompraAuditoriaModel.tipo_operacion == tipo_operacion.upper())
 
-            # Filtro por usuario
-            if id_usuario is not None:
-                filters.append(OrdenesCompraAuditoriaModel.id_usuario == id_usuario)
+            # Filtro por usuario - buscar por nombre de usuario, nombre o apellido
+            if usuario:
+                from app.adapters.outbound.database.models.usuarios_model import UsuariosModel
+                from sqlalchemy import func, concat
+
+                # Subquery para buscar IDs de usuarios que coincidan con el nombre
+                usuario_ids_subquery = self.db.query(UsuariosModel.id_usuario).filter(
+                    or_(
+                        UsuariosModel.username.like(f"%{usuario}%"),
+                        UsuariosModel.nombre.like(f"%{usuario}%"),
+                        UsuariosModel.apellido.like(f"%{usuario}%"),
+                        concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).like(f"%{usuario}%")
+                    )
+                ).scalar_subquery()
+
+                filters.append(OrdenesCompraAuditoriaModel.id_usuario.in_(
+                    self.db.query(UsuariosModel.id_usuario).filter(
+                        or_(
+                            UsuariosModel.username.like(f"%{usuario}%"),
+                            UsuariosModel.nombre.like(f"%{usuario}%"),
+                            UsuariosModel.apellido.like(f"%{usuario}%"),
+                            concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).like(f"%{usuario}%")
+                        )
+                    )
+                ))
 
             # Filtro por proveedor - buscar en campos anterior y nuevo
             if proveedor:
