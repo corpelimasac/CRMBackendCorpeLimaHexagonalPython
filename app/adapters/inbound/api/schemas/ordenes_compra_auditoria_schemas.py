@@ -58,7 +58,7 @@ class ListarAuditoriasRequest(BaseModel):
     id_orden_compra: Optional[int] = Field(None, description="Filtrar por ID de orden de compra")
     numero_oc: Optional[str] = Field(None, description="Filtrar por número de OC (correlativo)")
     tipo_operacion: Optional[str] = Field(None, description="Filtrar por tipo de operación")
-    id_usuario: Optional[int] = Field(None, description="Filtrar por usuario")
+    usuario: Optional[str] = Field(None, description="Buscar por nombre del usuario")
     proveedor: Optional[str] = Field(None, description="Buscar por razón social del proveedor")
     ruc_proveedor: Optional[str] = Field(None, description="Filtrar por RUC del proveedor")
     contacto: Optional[str] = Field(None, description="Buscar por nombre del contacto")
