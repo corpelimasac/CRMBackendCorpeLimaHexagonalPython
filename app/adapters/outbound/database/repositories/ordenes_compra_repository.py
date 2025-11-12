@@ -646,6 +646,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             compra_id = registro_orden.compra_id if registro_orden else None
 
             # 1. Registrar auditoría ANTES de eliminar (mientras la orden aún existe)
+            # IMPORTANTE: Esto solo hace add() en memoria, NO commit
             from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
             auditoria_service = RegistroCompraAuditoriaService(self.db)
             auditoria_service.registrar_eliminacion_orden(
@@ -658,7 +659,14 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 compra_id=compra_id
             )
 
-            # 2. Eliminar registro_compra_ordenes primero (FK a ordenes_compra)
+            # CRÍTICO: Hacer flush() para que las auditorías se inserten ANTES de eliminar
+            # query().delete() ejecuta SQL inmediatamente, bypaseando la unidad de trabajo de SQLAlchemy
+            # Por eso necesitamos flush() primero para asegurar que las auditorías se guarden
+            self.db.flush()
+            logger.info("Auditorías insertadas en BD (flush completado)")
+
+            # 2. Eliminar físicamente en orden inverso de dependencias de FK
+            # 2a. Primero eliminar registro_compra_ordenes (tiene FK a ordenes_compra)
             deleted_registros = self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.id_orden == id_orden
             ).delete()
@@ -666,19 +674,21 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             if deleted_registros > 0:
                 logger.info(f"Eliminados {deleted_registros} registros de compra asociados")
 
-            # 3. Eliminar detalles de la orden (FK a ordenes_compra)
+            # 2b. Luego eliminar detalles de la orden (tiene FK a ordenes_compra)
             deleted_detalles = self.db.query(OrdenesCompraDetallesModel).filter(
                 OrdenesCompraDetallesModel.id_orden == id_orden
             ).delete()
 
             logger.info(f"Eliminados {deleted_detalles} detalles de la orden")
 
-            # 4. Eliminar la orden
+            # 2c. Finalmente eliminar la orden
             self.db.query(OrdenesCompraModel).filter(
                 OrdenesCompraModel.id_orden == id_orden
             ).delete()
 
-            # 5. Disparar evento para recalcular registro de compra
+            logger.info(f"Orden {id_orden} eliminada físicamente")
+
+            # 3. Disparar evento para recalcular registro de compra
             self.event_dispatcher.publish(
                 session=self.db,
                 event_data={
