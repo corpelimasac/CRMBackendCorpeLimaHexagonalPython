@@ -25,9 +25,10 @@ class OrdenesCompraAuditoriaModel(Base):
                            comment="CREACION, ACTUALIZACION, ELIMINACION")
 
     # Referencias principales (numero_oc se obtiene por JOIN)
-    id_orden_compra = Column(BIGINT, ForeignKey("ordenes_compra.id_orden"),
-                            nullable=False, index=True,
-                            comment="ID de la orden de compra")
+    # Se permite NULL para mantener el historial cuando se elimina una orden
+    id_orden_compra = Column(BIGINT, ForeignKey("ordenes_compra.id_orden", ondelete="SET NULL"),
+                            nullable=True, index=True,
+                            comment="ID de la orden de compra (NULL si fue eliminada)")
 
     # Usuario que realizó el cambio
     id_usuario = Column(BIGINT, ForeignKey("usuarios.id_usuario"), nullable=False,

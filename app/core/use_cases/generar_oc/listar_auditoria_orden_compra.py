@@ -15,6 +15,29 @@ from app.adapters.outbound.database.models.productos_model import ProductosModel
 logger = logging.getLogger(__name__)
 
 
+def _parsear_cambio_concatenado(campo: Optional[str]) -> tuple:
+    """
+    Parsea un campo concatenado con formato 'id_anterior ----> id_nuevo' o solo 'id'
+
+    Returns:
+        tuple: (id_anterior o None, id_nuevo o None)
+    """
+    if not campo:
+        return None, None
+
+    if ' ----> ' in campo:
+        partes = campo.split(' ----> ')
+        try:
+            return int(partes[0].strip()), int(partes[1].strip())
+        except:
+            return None, None
+    else:
+        try:
+            return None, int(campo.strip())
+        except:
+            return None, None
+
+
 class ListarAuditoriaOrdenCompra:
     """
     Caso de uso optimizado para listar auditorías de órdenes de compra.
@@ -28,28 +51,6 @@ class ListarAuditoriaOrdenCompra:
 
     def __init__(self, db: Session):
         self.db = db
-
-    def _parsear_cambio_concatenado(self, campo: Optional[str]) -> tuple:
-        """
-        Parsea un campo concatenado con formato 'id_anterior ----> id_nuevo' o solo 'id'
-
-        Returns:
-            tuple: (id_anterior o None, id_nuevo o None)
-        """
-        if not campo:
-            return None, None
-
-        if ' ----> ' in campo:
-            partes = campo.split(' ----> ')
-            try:
-                return int(partes[0].strip()), int(partes[1].strip())
-            except:
-                return None, None
-        else:
-            try:
-                return None, int(campo.strip())
-            except:
-                return None, None
 
     def _obtener_nombre_proveedor(self, id_proveedor: Optional[int]) -> str:
         """Obtiene el nombre del proveedor por su ID"""
@@ -78,7 +79,7 @@ class ListarAuditoriaOrdenCompra:
         if not cambio_proveedor:
             return None
 
-        id_anterior, id_nuevo = self._parsear_cambio_concatenado(cambio_proveedor)
+        id_anterior, id_nuevo = _parsear_cambio_concatenado(cambio_proveedor)
 
         if id_anterior and id_nuevo:
             nombre_anterior = self._obtener_nombre_proveedor(id_anterior)
@@ -94,7 +95,7 @@ class ListarAuditoriaOrdenCompra:
         if not cambio_contacto:
             return None
 
-        id_anterior, id_nuevo = self._parsear_cambio_concatenado(cambio_contacto)
+        id_anterior, id_nuevo = _parsear_cambio_concatenado(cambio_contacto)
 
         if id_anterior and id_nuevo:
             nombre_anterior = self._obtener_nombre_contacto(id_anterior)
@@ -280,11 +281,16 @@ class ListarAuditoriaOrdenCompra:
                 productos_modificados_data = self._resolver_productos_modificados(auditoria.productos_modificados)
                 productos_eliminados_nombres = self._resolver_productos(auditoria.productos_eliminados)
 
-                # Parsear cambios adicionales
+                # Parsear cambios adicionales y convertir todos los valores a string
                 cambios_adicionales_dict = None
                 if auditoria.cambios_adicionales:
                     try:
-                        cambios_adicionales_dict = json.loads(auditoria.cambios_adicionales)
+                        raw_dict = json.loads(auditoria.cambios_adicionales)
+                        # Convertir todos los valores a string para cumplir con Dict[str, str]
+                        cambios_adicionales_dict = {
+                            k: str(v) if not isinstance(v, str) else v
+                            for k, v in raw_dict.items()
+                        }
                     except:
                         pass
 
