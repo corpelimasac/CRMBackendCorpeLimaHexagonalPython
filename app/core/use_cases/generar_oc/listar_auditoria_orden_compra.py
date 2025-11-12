@@ -107,21 +107,38 @@ class ListarAuditoriaOrdenCompra:
             return None
 
     def _resolver_productos(self, productos_json: Optional[str]) -> Optional[List[str]]:
-        """Resuelve una lista de IDs de productos a nombres"""
+        """Resuelve una lista de IDs de productos a nombres, preservando duplicados"""
         if not productos_json:
             return None
 
         try:
-            ids = json.loads(productos_json)
-            if not ids:
+            ids_raw = json.loads(productos_json)
+            if not ids_raw:
                 return None
+
+            # Convertir IDs a integers (pueden venir como strings desde el JSON)
+            ids = []
+            for id_val in ids_raw:
+                try:
+                    ids.append(int(id_val))
+                except (ValueError, TypeError):
+                    logger.warning(f"ID de producto inválido: {id_val}")
+                    ids.append(id_val)
+
+            # Obtener IDs únicos para la consulta
+            ids_unicos = list(set(ids))
 
             # Consultar todos los nombres de una vez
             productos = self.db.query(ProductosModel).filter(
-                ProductosModel.id_producto.in_(ids)
+                ProductosModel.id_producto.in_(ids_unicos)
             ).all()
 
-            nombres = [p.nombre for p in productos]
+            # Crear un mapa de id -> nombre
+            mapa_productos = {p.id_producto: p.nombre for p in productos}
+
+            # Mapear cada ID del array original a su nombre, preservando duplicados
+            nombres = [mapa_productos.get(id_prod, f"ID:{id_prod}") for id_prod in ids]
+
             return nombres if nombres else None
 
         except Exception as e:
@@ -140,8 +157,15 @@ class ListarAuditoriaOrdenCompra:
 
             resultado = []
             for item in productos_data:
-                id_producto = item.get('id_producto')
+                id_producto_raw = item.get('id_producto')
                 cambios = item.get('cambios', {})
+
+                # Convertir ID a integer (puede venir como string desde el JSON)
+                try:
+                    id_producto = int(id_producto_raw)
+                except (ValueError, TypeError):
+                    logger.warning(f"ID de producto inválido en modificados: {id_producto_raw}")
+                    id_producto = id_producto_raw
 
                 # Obtener nombre del producto
                 producto = self.db.query(ProductosModel).filter(
@@ -197,15 +221,15 @@ class ListarAuditoriaOrdenCompra:
         try:
             logger.info(f"Listando auditorías - Página {page}, tamaño {page_size}")
 
-            # Query base con JOINs
+            # Query base con LEFT JOINs para incluir todas las auditorías
             query = (
                 self.db.query(
                     OrdenesCompraAuditoriaModel,
                     OrdenesCompraModel.correlative.label("numero_oc"),
                     func.concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).label("nombre_usuario")
                 )
-                .join(OrdenesCompraModel, OrdenesCompraAuditoriaModel.id_orden_compra == OrdenesCompraModel.id_orden)
-                .join(UsuariosModel, OrdenesCompraAuditoriaModel.id_usuario == UsuariosModel.id_usuario)
+                .outerjoin(OrdenesCompraModel, OrdenesCompraAuditoriaModel.id_orden_compra == OrdenesCompraModel.id_orden)
+                .outerjoin(UsuariosModel, OrdenesCompraAuditoriaModel.id_usuario == UsuariosModel.id_usuario)
             )
 
             # Aplicar filtros
@@ -295,12 +319,13 @@ class ListarAuditoriaOrdenCompra:
                         pass
 
                 # Construir item de respuesta
+                # Manejar valores None para campos obligatorios del schema
                 item = {
                     "id_auditoria": auditoria.id_auditoria,
                     "fecha_evento": auditoria.fecha_evento,
                     "tipo_operacion": auditoria.tipo_operacion,
-                    "numero_oc": numero_oc,
-                    "nombre_usuario": nombre_usuario,
+                    "numero_oc": numero_oc if numero_oc is not None else "N/A",
+                    "nombre_usuario": nombre_usuario if nombre_usuario is not None else "Sin asignar",
                     "cambio_proveedor": cambio_proveedor_resuelto,
                     "cambio_contacto": cambio_contacto_resuelto,
                     "cambio_monto": auditoria.cambio_monto,
