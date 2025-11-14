@@ -14,6 +14,7 @@ class ProductoInfo(BaseModel):
   cantidad: int = Field(..., description="Cantidad del producto")
   pUnitario: float = Field(..., description="Precio unitario del producto")
   ptotal: float = Field(..., description="Total del producto")
+  igv: Optional[str] = Field("CON IGV", description="IGV del producto (CON IGV / SIN IGV)")
   idProductoCotizacion: Optional[int] = Field(None, description="ID del producto en productos_cotizaciones")
 
 class ProductoUpdateInfo(BaseModel):

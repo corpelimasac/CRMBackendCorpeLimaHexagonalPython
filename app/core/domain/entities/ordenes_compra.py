@@ -7,6 +7,7 @@ class OrdenesCompraItem:
     cantidad: int
     p_unitario: float
     p_total: float
+    igv: str = 'CON IGV'  # Tipo de IGV del producto: 'CON IGV' o 'SIN IGV'
     id_producto_cotizacion: int = None  # Relación con productos_cotizaciones
 
 @dataclass
