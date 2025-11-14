@@ -5,6 +5,7 @@ from .base import Base
 
 # Modelos principales
 from .usuarios_model import UsuariosModel
+from .trabajadores_model import TrabajadoresModel
 from .cotizacion_model import CotizacionModel
 
 # Modelos de registro de compras (antes de ordenes_compra por FK)
@@ -47,6 +48,7 @@ from .porcentaje_utilidad_model import PorcentajeUtilidadModel
 __all__ = [
     "Base",
     "UsuariosModel",
+    "TrabajadoresModel",
     "CotizacionModel",
     "RegistroCompraModel",
     "RegistroCompraOrdenModel",
