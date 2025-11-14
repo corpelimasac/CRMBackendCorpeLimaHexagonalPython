@@ -8,6 +8,7 @@ from sqlalchemy import and_, desc, or_, func
 from app.adapters.outbound.database.models.ordenes_compra_auditoria_model import OrdenesCompraAuditoriaModel
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 from app.adapters.outbound.database.models.usuarios_model import UsuariosModel
+from app.adapters.outbound.database.models.trabajadores_model import TrabajadoresModel
 from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
 from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
 from app.adapters.outbound.database.models.productos_model import ProductosModel
@@ -226,10 +227,11 @@ class ListarAuditoriaOrdenCompra:
                 self.db.query(
                     OrdenesCompraAuditoriaModel,
                     OrdenesCompraModel.correlative.label("numero_oc"),
-                    func.concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).label("nombre_usuario")
+                    func.concat(TrabajadoresModel.nombre, ' ', TrabajadoresModel.apellido).label("nombre_usuario")
                 )
                 .outerjoin(OrdenesCompraModel, OrdenesCompraAuditoriaModel.id_orden_compra == OrdenesCompraModel.id_orden)
                 .outerjoin(UsuariosModel, OrdenesCompraAuditoriaModel.id_usuario == UsuariosModel.id_usuario)
+                .outerjoin(TrabajadoresModel, UsuariosModel.id_trabajador == TrabajadoresModel.id_trabajador)
             )
 
             # Aplicar filtros
@@ -247,9 +249,9 @@ class ListarAuditoriaOrdenCompra:
             if usuario:
                 usuario_filter = or_(
                     UsuariosModel.username.like(f"%{usuario}%"),
-                    UsuariosModel.nombre.like(f"%{usuario}%"),
-                    UsuariosModel.apellido.like(f"%{usuario}%"),
-                    func.concat(UsuariosModel.nombre, ' ', UsuariosModel.apellido).like(f"%{usuario}%")
+                    TrabajadoresModel.nombre.like(f"%{usuario}%"),
+                    TrabajadoresModel.apellido.like(f"%{usuario}%"),
+                    func.concat(TrabajadoresModel.nombre, ' ', TrabajadoresModel.apellido).like(f"%{usuario}%")
                 )
                 filters.append(usuario_filter)
 
