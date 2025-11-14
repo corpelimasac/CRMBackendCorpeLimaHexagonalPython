@@ -117,6 +117,7 @@ class ActualizarOrdenCompra:
             logger.debug(f"Orden asociada a registro de compra: {compra_id if compra_id else 'ninguno'}")
 
             # 2. Actualizar campos básicos de la orden (SIN COMMIT)
+            # IMPORTANTE: NO uniformizar aquí, guardar los datos tal como vienen del frontend
             if request.moneda or request.pago or request.entrega or request.proveedor:
                 self.ordenes_compra_repo.actualizar_orden(
                     id_orden=request.idOrden,
@@ -217,6 +218,7 @@ class ActualizarOrdenCompra:
                         cantidad=producto.cantidad,
                         precio_unitario=producto.pUnitario,
                         precio_total=producto.ptotal,
+                        igv=producto.igv,  # Pasar el IGV del producto (ya uniformizado)
                         id_producto_cotizacion=producto.idProductoCotizacion  # Relacionar con productos_cotizaciones
                     )
                     productos_creados += 1
@@ -225,19 +227,33 @@ class ActualizarOrdenCompra:
             logger.info(f"Resumen de productos: {productos_eliminados} eliminados, "
                        f"{productos_actualizados} actualizados, {productos_creados} creados")
 
-            # 4. Calcular el nuevo total de la orden (igual que en el Excel)
-            detalles_actuales = self.ordenes_compra_repo.obtener_detalles_orden(request.idOrden)
-            subtotal = sum(detalle.precio_total for detalle in detalles_actuales)
+            # 4. Calcular el nuevo total de la orden
+            # Obtener todos los detalles actuales con su IGV
+            from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
+            detalles_actuales = self.db.query(OrdenesCompraDetallesModel).filter(
+                OrdenesCompraDetallesModel.id_orden == request.idOrden
+            ).all()
 
-            # Obtener el IGV del primer producto (asumimos que todos tienen el mismo IGV)
-            igv_tipo = request.productos[0].igv if request.productos else "CON IGV"
+            # Separar productos por tipo de IGV
+            productos_con_igv = []
+            productos_sin_igv = []
+            for detalle in detalles_actuales:
+                if detalle.igv and detalle.igv.upper() == 'SIN IGV':
+                    productos_sin_igv.append(detalle)
+                else:
+                    productos_con_igv.append(detalle)
 
-            # Si es "SIN IGV", agregar el 18% de IGV al subtotal
-            if igv_tipo == "SIN IGV":
-                total_orden = round(subtotal + (subtotal * 0.18), 2)
+            # Calcular subtotales
+            subtotal_con_igv = sum(detalle.precio_total for detalle in productos_con_igv)
+            subtotal_sin_igv = sum(detalle.precio_total for detalle in productos_sin_igv)
+
+            # Si hay productos mezclados o todos son SIN IGV, agregar IGV al total
+            if productos_sin_igv:
+                # Agregar 18% de IGV a los productos que vienen sin IGV
+                total_orden = round(subtotal_con_igv + subtotal_sin_igv + (subtotal_sin_igv * 0.18), 2)
             else:
-                # Si es "CON IGV", el subtotal ya incluye el IGV
-                total_orden = round(subtotal, 2)
+                # Todos los productos ya tienen IGV incluido
+                total_orden = round(subtotal_con_igv, 2)
 
             monto_nuevo = float(total_orden)
 
@@ -247,7 +263,7 @@ class ActualizarOrdenCompra:
                 OrdenesCompraModel.id_orden == request.idOrden
             ).update({"total": str(total_orden)})
 
-            # Registrar auditoría de la actualización con nuevo servicio
+            # 5. Registrar auditoría de la actualización con nuevo servicio
             # Obtener nombres de proveedor y contacto para auditoría
             from app.adapters.outbound.database.models.proveedores_model import ProveedoresModel
             from app.adapters.outbound.database.models.proveedor_contacto_model import ProveedorContactosModel
@@ -313,7 +329,7 @@ class ActualizarOrdenCompra:
             )
             logger.info(f"Auditoría registrada para orden {numero_oc}{' (con registro de compra '+str(compra_id)+')' if compra_id else ''}")
 
-            # 5. Regenerar Excel usando los datos del request
+            # 6. Regenerar Excel usando los datos del request
             logger.info("Regenerando archivo Excel con datos actualizados...")
 
             # Preparar datos de la orden (usar fecha actual para el Excel)
@@ -349,7 +365,7 @@ class ActualizarOrdenCompra:
                 for p in request.productos if not p.eliminar
             ]
 
-            # Validar que hay productos para generar Excel
+            # 7. Validar que hay productos para generar Excel
             if not productos_data:
                 self.db.rollback()
                 raise HTTPException(
@@ -373,7 +389,7 @@ class ActualizarOrdenCompra:
                     detail="No se pudo generar el archivo Excel"
                 )
 
-            # 6. Subir PRIMERO el nuevo Excel a S3 (antes de eliminar el antiguo)
+            # 8. Subir PRIMERO el nuevo Excel a S3 (antes de eliminar el antiguo)
             logger.info("Subiendo nuevo archivo a S3...")
             urls = await self.file_storage.save_multiple(excel_files)
 
@@ -388,7 +404,7 @@ class ActualizarOrdenCompra:
             nueva_url_s3 = urls[0]
             logger.info(f"Nuevo archivo subido a S3: {nueva_url_s3}")
 
-            # 7. Ahora SÍ eliminar archivo antiguo de S3 (solo si la subida fue exitosa)
+            # 9. Ahora SÍ eliminar archivo antiguo de S3 (solo si la subida fue exitosa)
             if ruta_s3_antigua and ruta_s3_antigua != nueva_url_s3:
                 try:
                     logger.info(f"Eliminando archivo antiguo de S3: {ruta_s3_antigua}")
@@ -399,7 +415,7 @@ class ActualizarOrdenCompra:
                     # No es crítico, el nuevo ya está subido y se va a usar
                     # El archivo antiguo quedará huérfano pero no rompe el flujo
 
-            # 8. Actualizar ruta S3 en la BD (SIN COMMIT - mantener atomicidad)
+            # 10. Actualizar ruta S3 en la BD (SIN COMMIT - mantener atomicidad)
             # Actualizar directamente sin usar el método del repositorio para evitar commit prematuro
             from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
             orden_modelo = self.db.query(OrdenesCompraModel).filter(
@@ -409,7 +425,7 @@ class ActualizarOrdenCompra:
                 orden_modelo.ruta_s3 = nueva_url_s3
                 logger.info("Ruta S3 actualizada en la base de datos (pendiente commit)")
 
-            # 9. Encolar evento ANTES del commit (se ejecutará solo si el commit es exitoso)
+            # 11. Encolar evento ANTES del commit (se ejecutará solo si el commit es exitoso)
             from app.adapters.outbound.database.repositories.ordenes_compra_repository import handle_orden_compra_evento
 
             self.event_dispatcher.publish(

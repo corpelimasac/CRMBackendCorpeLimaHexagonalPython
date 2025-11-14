@@ -42,28 +42,99 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
             # Obtener datos del primer resultado para metadatos
             primer_resultado = resultados_contacto[0]
             nombre_proveedor = primer_resultado.PROVEEDOR or "Proveedor"
-            igv = primer_resultado.IGV or "SIN IGV"
             numero_oc = primer_resultado.NUMERO_OC
-            
+
+            # Determinar IGV: verificar todos los resultados para determinar si hay mezcla
+            tipos_igv_resultados = set()
+            for r in resultados_contacto:
+                igv_resultado = (r.IGV or '').upper()
+                if igv_resultado:
+                    tipos_igv_resultados.add(igv_resultado)
+
+            print(f"[EXCEL GENERATOR] Contacto {id_contacto} - Tipos de IGV en BD: {tipos_igv_resultados}")
+
+            # Determinar la estrategia según los tipos de IGV
+            todos_sin_igv = tipos_igv_resultados == {'SIN IGV'}
+            todos_con_igv = tipos_igv_resultados == {'CON IGV'} or len(tipos_igv_resultados) == 0
+            mixtos = len(tipos_igv_resultados) > 1
+
             # Convertir resultados al formato esperado por Generador
-            datos_para_excel = [
-                {
-                    'CANT': r.CANT,
-                    'UMED': r.UMED, 
-                    'PRODUCTO': r.PRODUCTO,
-                    'MARCA': r.MARCA,
-                    'MODELO': r.MODELO,
-                    'P.UNIT': r.PUNIT,
-                    'PROVEEDOR': r.PROVEEDOR,
-                    'PERSONAL': r.PERSONAL,
-                    'CELULAR': r.CELULAR,
-                    'CORREO': r.CORREO,
-                    'DIRECCION': r.DIRECCION,
-                    'FECHA': r.FECHA,
-                    'MONEDA': r.MONEDA,
-                    'PAGO': r.PAGO
-                } for r in resultados_contacto
-            ]
+            datos_para_excel = []
+
+            if todos_sin_igv:
+                # CASO 1: TODOS SIN IGV - No uniformizar, el Excel mostrará SUBTOTAL + IGV + TOTAL
+                igv = 'SIN IGV'
+                print(f"[EXCEL GENERATOR] TODOS SIN IGV - Excel mostrará desglose de IGV")
+                for r in resultados_contacto:
+                    datos_para_excel.append({
+                        'CANT': r.CANT,
+                        'UMED': r.UMED,
+                        'PRODUCTO': r.PRODUCTO,
+                        'MARCA': r.MARCA,
+                        'MODELO': r.MODELO,
+                        'P.UNIT': r.PUNIT,  # Precio sin modificar
+                        'PROVEEDOR': r.PROVEEDOR,
+                        'PERSONAL': r.PERSONAL,
+                        'CELULAR': r.CELULAR,
+                        'CORREO': r.CORREO,
+                        'DIRECCION': r.DIRECCION,
+                        'FECHA': r.FECHA,
+                        'MONEDA': r.MONEDA,
+                        'PAGO': r.PAGO
+                    })
+
+            elif mixtos:
+                # CASO 2: MIXTOS - Uniformizar solo los SIN IGV, Excel mostrará solo TOTAL
+                igv = 'CON IGV'
+                print(f"[EXCEL GENERATOR] MIXTOS - Uniformizando productos SIN IGV")
+                for r in resultados_contacto:
+                    igv_producto = (r.IGV or '').upper()
+                    precio_unitario = r.PUNIT
+
+                    if igv_producto == 'SIN IGV':
+                        precio_unitario = round(r.PUNIT * 1.18, 2)
+                        print(f"[EXCEL] Producto '{r.PRODUCTO}' SIN IGV uniformizado: {r.PUNIT} → {precio_unitario}")
+
+                    datos_para_excel.append({
+                        'CANT': r.CANT,
+                        'UMED': r.UMED,
+                        'PRODUCTO': r.PRODUCTO,
+                        'MARCA': r.MARCA,
+                        'MODELO': r.MODELO,
+                        'P.UNIT': precio_unitario,
+                        'PROVEEDOR': r.PROVEEDOR,
+                        'PERSONAL': r.PERSONAL,
+                        'CELULAR': r.CELULAR,
+                        'CORREO': r.CORREO,
+                        'DIRECCION': r.DIRECCION,
+                        'FECHA': r.FECHA,
+                        'MONEDA': r.MONEDA,
+                        'PAGO': r.PAGO
+                    })
+
+            else:
+                # CASO 3: TODOS CON IGV - No modificar nada, Excel mostrará solo TOTAL
+                igv = 'CON IGV'
+                print(f"[EXCEL GENERATOR] TODOS CON IGV - Sin modificaciones")
+                for r in resultados_contacto:
+                    datos_para_excel.append({
+                        'CANT': r.CANT,
+                        'UMED': r.UMED,
+                        'PRODUCTO': r.PRODUCTO,
+                        'MARCA': r.MARCA,
+                        'MODELO': r.MODELO,
+                        'P.UNIT': r.PUNIT,
+                        'PROVEEDOR': r.PROVEEDOR,
+                        'PERSONAL': r.PERSONAL,
+                        'CELULAR': r.CELULAR,
+                        'CORREO': r.CORREO,
+                        'DIRECCION': r.DIRECCION,
+                        'FECHA': r.FECHA,
+                        'MONEDA': r.MONEDA,
+                        'PAGO': r.PAGO
+                    })
+
+            print(f"[EXCEL GENERATOR] Contacto {id_contacto} - IGV para Excel: {igv}")
             
             # Crear directorio temporal
             with tempfile.TemporaryDirectory() as temp_dir:
@@ -101,10 +172,55 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
         """
         excel_files = {}
 
-        # Determinar IGV del primer producto (asumimos que todos tienen el mismo)
-        igv = productos_data[0].get('igv', 'SIN IGV') if productos_data else 'SIN IGV'
+        # Determinar IGV: verificar todos los productos para determinar si hay mezcla
+        tipos_igv_productos = set()
+        for p in productos_data:
+            igv_producto = p.get('igv', '').upper()
+            if igv_producto:
+                tipos_igv_productos.add(igv_producto)
 
-        # Convertir datos al formato esperado por Generador
+        print(f"[EXCEL GENERATOR] Tipos de IGV encontrados en productos: {tipos_igv_productos}")
+
+        # Determinar la estrategia según los tipos de IGV
+        todos_sin_igv = tipos_igv_productos == {'SIN IGV'}
+        todos_con_igv = tipos_igv_productos == {'CON IGV'} or len(tipos_igv_productos) == 0
+        mixtos = len(tipos_igv_productos) > 1
+
+        # Procesar productos según la estrategia
+        productos_data_uniformizados = []
+
+        if todos_sin_igv:
+            # CASO 1: TODOS SIN IGV - No uniformizar, el Excel mostrará SUBTOTAL + IGV + TOTAL
+            igv = 'SIN IGV'
+            print(f"[EXCEL GENERATOR] TODOS SIN IGV - Excel mostrará desglose de IGV")
+            productos_data_uniformizados = [p.copy() for p in productos_data]
+
+        elif mixtos:
+            # CASO 2: MIXTOS - Uniformizar solo los SIN IGV, Excel mostrará solo TOTAL
+            igv = 'CON IGV'
+            print(f"[EXCEL GENERATOR] MIXTOS - Uniformizando productos SIN IGV")
+            for p in productos_data:
+                producto = p.copy()
+                igv_producto = producto.get('igv', '').upper()
+
+                if igv_producto == 'SIN IGV':
+                    precio_sin_igv = producto.get('precioUnitario', 0)
+                    precio_con_igv = round(precio_sin_igv * 1.18, 2)
+                    producto['precioUnitario'] = precio_con_igv
+                    producto['igv'] = 'CON IGV'
+                    print(f"[EXCEL] Producto SIN IGV uniformizado: {precio_sin_igv} → {precio_con_igv}")
+
+                productos_data_uniformizados.append(producto)
+
+        else:
+            # CASO 3: TODOS CON IGV - No modificar nada, Excel mostrará solo TOTAL
+            igv = 'CON IGV'
+            print(f"[EXCEL GENERATOR] TODOS CON IGV - Sin modificaciones")
+            productos_data_uniformizados = [p.copy() for p in productos_data]
+
+        print(f"[EXCEL GENERATOR] IGV para Excel: {igv}")
+
+        # Convertir datos al formato esperado por Generador (usando productos uniformizados)
         datos_para_excel = [
             {
                 'CANT': p.get('cantidad'),
@@ -121,7 +237,7 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
                 'FECHA': orden_data.get('fecha'),
                 'MONEDA': orden_data.get('moneda'),
                 'PAGO': orden_data.get('pago')
-            } for p in productos_data
+            } for p in productos_data_uniformizados
         ]
 
         # Crear directorio temporal

@@ -95,6 +95,7 @@ class GenerarOrdenCompra:
         logger.info(f"Versión de cotización {request.idCotizacionVersiones} verificada")
 
         # 1. Preparar todas las órdenes de compra
+        # IMPORTANTE: NO uniformizar aquí, guardar los datos tal como vienen del frontend
         logger.info(f"Preparando {len(request.data)} órdenes de compra...")
         ordenes_a_guardar = []
 
@@ -114,12 +115,14 @@ class GenerarOrdenCompra:
                 )
 
             # Mapear los productos del DTO a la entidad OrdenesCompraItem
+            # Guardar los productos tal como vienen del frontend (sin uniformizar)
             items_entidad = [
                 OrdenesCompraItem(
                     id_producto=producto.idProducto,
                     cantidad=producto.cantidad,
                     p_unitario=producto.pUnitario,
                     p_total=producto.ptotal,
+                    igv=getattr(producto, 'igv', 'CON IGV'),  # IGV tal como viene del frontend
                     id_producto_cotizacion=producto.idProductoCotizacion  # Relacionar con productos_cotizaciones
                 )
                 for producto in order_data.productos
@@ -143,12 +146,12 @@ class GenerarOrdenCompra:
 
             ordenes_a_guardar.append(ordenes_compra_entity)
 
-        # PASO 1: Guardar órdenes SIN COMMIT (solo flush para obtener IDs)
+        # PASO 2: Guardar órdenes SIN COMMIT (solo flush para obtener IDs)
         logger.info(f"Guardando {len(ordenes_a_guardar)} órdenes de compra en batch (sin commit)...")
         orden_ids = self.ordenes_compra_repo.save_batch_sin_commit(ordenes_a_guardar)
         logger.info(f"✅ {len(orden_ids)} órdenes preparadas (pendiente commit)")
 
-        # PASO 2: Crear GenerarOCRequest con todos los contactos
+        # PASO 3: Crear GenerarOCRequest con todos los contactos
         lista_ids_contacto = list(set([
             order_data.proveedorInfo.idProveedorContacto
             for order_data in request.data
@@ -163,7 +166,7 @@ class GenerarOrdenCompra:
             consorcio=request.consorcio
         )
 
-        # PASO 3: Verificar que hay datos para generar Excel
+        # PASO 4: Verificar que hay datos para generar Excel
         resultados = self.ordenes_compra_repo.obtener_info_oc(generar_oc_request)
         if not resultados:
             self.ordenes_compra_repo.rollback()
@@ -174,7 +177,7 @@ class GenerarOrdenCompra:
 
         logger.info(f"Total de resultados obtenidos: {len(resultados)}")
 
-        # PASO 4: Generar Excel y subir a S3 usando paralelismo
+        # PASO 5: Generar Excel y subir a S3 usando paralelismo
         logger.info("Generando Excel y subiendo a S3 con paralelismo...")
         try:
             generated_files_urls = []
@@ -205,7 +208,7 @@ class GenerarOrdenCompra:
                     detail="No se pudo generar ninguna orden de compra."
                 )
 
-            # PASO 5: TODO salió bien → COMMIT ÚNICO con evento
+            # PASO 6: TODO salió bien → COMMIT ÚNICO con evento
             logger.info("✅ Todos los archivos subidos exitosamente. Haciendo commit...")
             self.ordenes_compra_repo.commit_con_evento(ordenes_a_guardar)
 

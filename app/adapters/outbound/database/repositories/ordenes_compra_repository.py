@@ -115,18 +115,33 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             new_correlative = f"OC-{new_number:06d}-{current_year}"
             logger.debug(f"Generado correlativo: {new_correlative}")
 
-            # Calcular total de la orden (igual que en el Excel)
+            # Calcular total de la orden considerando el IGV de cada producto individual
             try:
-                # Sumar el precio total de todos los items (subtotal)
-                subtotal = round(sum(float(it.p_total) for it in getattr(order, 'items', [])), 2)
+                items = getattr(order, 'items', [])
 
-                # Si es "SIN IGV", agregar el 18% de IGV al subtotal
-                if getattr(order, 'igv', 'CON IGV') == "SIN IGV":
-                    total_calculado = round(subtotal + (subtotal * 0.18), 2)
+                # Separar productos por tipo de IGV
+                subtotal_con_igv = 0.0
+                subtotal_sin_igv = 0.0
+
+                for item in items:
+                    precio_total_item = float(item.p_total)
+                    igv_item = getattr(item, 'igv', 'CON IGV').upper()
+
+                    if igv_item == 'SIN IGV':
+                        subtotal_sin_igv += precio_total_item
+                    else:
+                        subtotal_con_igv += precio_total_item
+
+                # Si hay productos SIN IGV, agregar 18% de IGV solo a esos
+                if subtotal_sin_igv > 0:
+                    total_calculado = round(subtotal_con_igv + subtotal_sin_igv + (subtotal_sin_igv * 0.18), 2)
                 else:
-                    # Si es "CON IGV", el subtotal ya incluye el IGV
-                    total_calculado = subtotal
-            except (AttributeError, TypeError, ValueError):
+                    # Todos los productos ya tienen IGV incluido
+                    total_calculado = round(subtotal_con_igv, 2)
+
+                logger.debug(f"Total calculado: CON IGV={subtotal_con_igv}, SIN IGV={subtotal_sin_igv}, TOTAL={total_calculado}")
+            except (AttributeError, TypeError, ValueError) as e:
+                logger.warning(f"Error al calcular total, usando total de la orden: {e}")
                 total_calculado = round(float(order.total), 2) if getattr(order, 'total', None) is not None else 0.0
 
             db_order = OrdenesCompraModel(
@@ -157,6 +172,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     cantidad=item.cantidad,
                     precio_unitario=item.p_unitario,
                     precio_total=item.p_total,
+                    igv=getattr(item, 'igv', 'CON IGV'),  # Guardar el IGV de cada producto
                     id_producto_cotizacion=item.id_producto_cotizacion  # Guardar relación con productos_cotizaciones
                 )
                 self.db.add(db_detail)
@@ -445,10 +461,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     OrdenesCompraModel.moneda.label("MONEDA"),
                     OrdenesCompraModel.pago.label("PAGO"),
                     OrdenesCompraDetallesModel.precio_unitario.label("PUNIT"),
-                    case(
-                        (ProveedorDetalleModel.igv == "SIN IGV", "SIN IGV"),
-                        else_="CON IGV",
-                    ).label("IGV"),
+                    OrdenesCompraDetallesModel.igv.label("IGV"),  # Obtener IGV desde los detalles guardados
                     OrdenesCompraDetallesModel.precio_total.label("TOTAL"),
                 )
                 .select_from(OrdenesCompraModel)
@@ -825,7 +838,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al actualizar detalle {id_oc_detalle}: {e}")
             raise
 
-    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float, id_producto_cotizacion: int = None, auto_commit: bool = True) -> Any:
+    def crear_detalle_producto(self, id_orden: int, id_producto: int, cantidad: int, precio_unitario: float, precio_total: float, igv: str = 'CON IGV', id_producto_cotizacion: int = None, auto_commit: bool = True) -> Any:
         """
         Crea un nuevo detalle de producto
 
@@ -835,6 +848,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             cantidad (int): Cantidad
             precio_unitario (float): Precio unitario
             precio_total (float): Precio total
+            igv (str): Tipo de IGV del producto ('CON IGV' o 'SIN IGV'). Default: 'CON IGV'
             id_producto_cotizacion (int, optional): ID del producto en productos_cotizaciones
             auto_commit (bool): Si es True, hace commit automáticamente. Default: True
 
@@ -848,6 +862,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 cantidad=cantidad,
                 precio_unitario=precio_unitario,
                 precio_total=precio_total,
+                igv=igv,
                 id_producto_cotizacion=id_producto_cotizacion
             )
 

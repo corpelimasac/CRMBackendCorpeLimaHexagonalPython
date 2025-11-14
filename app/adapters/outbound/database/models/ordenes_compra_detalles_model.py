@@ -1,8 +1,8 @@
-from sqlalchemy import Column, Integer, Float, ForeignKey, BIGINT
+from sqlalchemy import Column, Integer, Float, ForeignKey, BIGINT, String
 from .base import Base
 
 class OrdenesCompraDetallesModel(Base):
-  """ 
+  """
   Modelo SQLAlchemy para la tabla de ordenes de compra detalles
   """
   __tablename__ = "ordenes_compra_detalles"
@@ -13,6 +13,9 @@ class OrdenesCompraDetallesModel(Base):
   cantidad = Column(Integer, nullable=False)
   precio_unitario = Column(Float, nullable=False)
   precio_total = Column(Float, nullable=False)
+
+  # Campo para almacenar el IGV de cada producto individual
+  igv = Column(String(10), nullable=True, default='CON IGV')
 
   # Relación con la tabla de ordenes de compra
   id_orden = Column(BIGINT, ForeignKey("ordenes_compra.id_orden"), nullable=False)
