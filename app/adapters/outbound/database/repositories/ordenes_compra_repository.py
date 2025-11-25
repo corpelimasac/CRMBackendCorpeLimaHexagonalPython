@@ -584,9 +584,6 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
         Returns:
             Optional[OrdenesCompraModel]: Orden de compra encontrada o None si no existe
-
-        Raises:
-            ValueError: Si la orden no existe
         """
         from sqlalchemy.orm import joinedload
 
@@ -612,7 +609,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
     def eliminar_orden(self, id_orden: int) -> bool:
         """
-        Elimina una orden de compra y todos sus registros asociados
+        Elimina una orden de compra y todos sus registros asociados.
+        Si la orden es la última de un registro de compra, elimina el registro completo.
 
         Args:
             id_orden (int): ID de la orden de compra
@@ -623,35 +621,29 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
         Raises:
             ValueError: Si la orden no existe
         """
+        from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+        from app.adapters.outbound.database.repositories.registro_compra_repository import RegistroCompraRepository
+        from app.core.use_cases.registro_compra.procesar_registro_compra import ProcesarRegistroCompra
 
         try:
             # Verificar que la orden existe
-            orden = (
-                self.db.query(OrdenesCompraModel)
-                .filter(OrdenesCompraModel.id_orden == id_orden)
-                .first()
-            )
-
+            orden = self.db.query(OrdenesCompraModel).filter(OrdenesCompraModel.id_orden == id_orden).first()
             if not orden:
                 raise ValueError(f"Orden de compra con ID {id_orden} no encontrada")
 
-            # Guardar datos de la orden ANTES de eliminarla (para el evento y auditoría)
+            # Guardar datos para auditoría y lógica posterior
             id_cotizacion = orden.id_cotizacion
             id_cotizacion_versiones = orden.id_cotizacion_versiones
             numero_oc = orden.correlative
             monto_orden = float(orden.total) if orden.total else 0.0
 
-            # Verificar si tiene registro de compra
+            # Verificar si la orden está en un registro de compra
             registro_orden = self.db.query(RegistroCompraOrdenModel).filter(
                 RegistroCompraOrdenModel.id_orden == id_orden
             ).first()
-
-            tenia_registro = registro_orden is not None
             compra_id = registro_orden.compra_id if registro_orden else None
 
-            # 1. Registrar auditoría ANTES de eliminar (mientras la orden aún existe)
-            # IMPORTANTE: Esto solo hace add() en memoria, NO commit
-            from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+            # Registrar auditoría de eliminación de la orden
             auditoria_service = RegistroCompraAuditoriaService(self.db)
             auditoria_service.registrar_eliminacion_orden(
                 id_orden=id_orden,
@@ -659,58 +651,57 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 id_cotizacion=int(id_cotizacion),
                 id_cotizacion_versiones=int(id_cotizacion_versiones),
                 monto_orden=monto_orden,
-                tenia_registro=tenia_registro,
+                tenia_registro=compra_id is not None,
                 compra_id=compra_id
             )
 
-            # CRÍTICO: Hacer flush() para que las auditorías se inserten ANTES de eliminar
-            # query().delete() ejecuta SQL inmediatamente, bypaseando la unidad de trabajo de SQLAlchemy
-            # Por eso necesitamos flush() primero para asegurar que las auditorías se guarden
-            self.db.flush()
-            logger.info("Auditorías insertadas en BD (flush completado)")
+            # Eliminar la orden de la tabla de unión `registro_compra_ordenes`
+            if compra_id:
+                self.db.query(RegistroCompraOrdenModel).filter(
+                    RegistroCompraOrdenModel.id_orden == id_orden
+                ).delete(synchronize_session=False)
 
-            # 2. Eliminar físicamente en orden inverso de dependencias de FK
-            # 2a. Primero eliminar registro_compra_ordenes (tiene FK a ordenes_compra)
-            deleted_registros = self.db.query(RegistroCompraOrdenModel).filter(
-                RegistroCompraOrdenModel.id_orden == id_orden
-            ).delete()
-
-            if deleted_registros > 0:
-                logger.info(f"Eliminados {deleted_registros} registros de compra asociados")
-
-            # 2b. Luego eliminar detalles de la orden (tiene FK a ordenes_compra)
-            deleted_detalles = self.db.query(OrdenesCompraDetallesModel).filter(
+            # Eliminar detalles de la orden
+            self.db.query(OrdenesCompraDetallesModel).filter(
                 OrdenesCompraDetallesModel.id_orden == id_orden
-            ).delete()
+            ).delete(synchronize_session=False)
 
-            logger.info(f"Eliminados {deleted_detalles} detalles de la orden")
-
-            # 2c. Finalmente eliminar la orden
+            # Eliminar la orden principal
             self.db.query(OrdenesCompraModel).filter(
                 OrdenesCompraModel.id_orden == id_orden
-            ).delete()
+            ).delete(synchronize_session=False)
 
-            logger.info(f"Orden {id_orden} eliminada físicamente")
+            logger.info(f"Orden {id_orden} y sus detalles marcados para eliminación.")
 
-            # 3. Disparar evento para recalcular registro de compra
-            self.event_dispatcher.publish(
-                session=self.db,
-                event_data={
-                    'tipo_evento': 'ORDEN_COMPRA_EDITADA',
-                    'id_cotizacion_nueva': id_cotizacion,
-                    'id_cotizacion_versiones': id_cotizacion_versiones,
-                    'cambio_cotizacion': False
-                },
-                handler=handle_orden_compra_evento
-            )
+            # Si la orden pertenecía a un registro de compra, recalcular o eliminar el registro
+            if compra_id:
+                # Verificar si quedan otras órdenes en el mismo registro de compra
+                ordenes_restantes = self.db.query(RegistroCompraOrdenModel).filter(
+                    RegistroCompraOrdenModel.compra_id == compra_id
+                ).count()
+
+                if ordenes_restantes == 0:
+                    logger.info(f"La orden {id_orden} era la última en el registro de compra {compra_id}. Eliminando el registro.")
+                    registro_repo = RegistroCompraRepository(self.db)
+                    registro_repo.eliminar_registro(compra_id)
+                else:
+                    logger.info(f"Quedan {ordenes_restantes} órdenes en el registro {compra_id}. Se recalculará.")
+                    # En lugar de un evento, llamamos directamente al caso de uso para mantener la atomicidad
+                    use_case = ProcesarRegistroCompra(self.db)
+                    use_case.execute({
+                        'tipo_evento': 'ORDEN_COMPRA_EDITADA',
+                        'id_cotizacion_nueva': id_cotizacion,
+                        'id_cotizacion_versiones': id_cotizacion_versiones,
+                        'cambio_cotizacion': False
+                    })
 
             self.db.commit()
-            logger.info(f"✅ Orden de compra {id_orden} eliminada - Evento disparado para actualizar registro")
+            logger.info(f"✅ Transacción de eliminación para orden {id_orden} completada.")
             return True
 
         except Exception as e:
             self.db.rollback()
-            logger.error(f"Error al eliminar orden de compra {id_orden}: {e}")
+            logger.error(f"Error al eliminar orden de compra {id_orden}: {e}", exc_info=True)
             raise
 
     def actualizar_orden(self, id_orden: int, moneda: str = None, pago: str = None, entrega: str = None, id_proveedor: int = None, id_proveedor_contacto: int = None, auto_commit: bool = True) -> bool:

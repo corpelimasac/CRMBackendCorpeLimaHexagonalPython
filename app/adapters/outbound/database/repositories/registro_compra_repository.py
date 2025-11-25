@@ -65,7 +65,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al obtener registro de compra: {e}")
             raise
 
-    def obtener_registro_huerfano_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> Optional[RegistroCompraModel]:
+    def obtener_registro_huerfano_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> type[
+                                                                                                                       RegistroCompraModel] | None:
         """
         Busca un registro de compra huérfano (sin órdenes activas) para una cotización.
 
@@ -81,29 +82,28 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             RegistroCompraModel: Registro huérfano encontrado o None
         """
         try:
-            from app.adapters.outbound.database.models.registro_compra_auditoria_model import RegistroCompraAuditoriaModel
-
-            # Buscar en la tabla de auditoría para encontrar el compra_id
-            # asociado a esta cotización (buscamos el último registro de auditoría)
-            query = self.db.query(RegistroCompraAuditoriaModel.compra_id).filter(
-                RegistroCompraAuditoriaModel.id_cotizacion == id_cotizacion,
-                RegistroCompraAuditoriaModel.tipo_entidad == 'ORDEN_COMPRA',
-                RegistroCompraAuditoriaModel.compra_id.isnot(None)
+            # FIX: El compra_id se debe buscar en la tabla `registro_compra_ordenes` que es la que tiene la relación
+            # con las órdenes de compra y, por lo tanto, con la cotización.
+            query = self.db.query(RegistroCompraOrdenModel.compra_id).join(
+                OrdenesCompraModel,
+                RegistroCompraOrdenModel.id_orden == OrdenesCompraModel.id_orden
+            ).filter(
+                OrdenesCompraModel.id_cotizacion == id_cotizacion
             )
 
             if id_cotizacion_versiones is not None:
                 query = query.filter(
-                    RegistroCompraAuditoriaModel.id_cotizacion_versiones == id_cotizacion_versiones
+                    OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
                 )
 
-            # Ordenar por fecha más reciente y obtener el compra_id
-            auditoria = query.order_by(RegistroCompraAuditoriaModel.fecha_evento.desc()).first()
+            # Obtener el compra_id
+            resultado = query.first()
 
-            if not auditoria:
-                logger.info(f"No se encontró registro de auditoría para cotización {id_cotizacion}")
+            if not resultado:
+                logger.info(f"No se encontró registro de compra para cotización {id_cotizacion}")
                 return None
 
-            compra_id = auditoria[0]  # auditoria es una tupla (compra_id,)
+            compra_id = resultado[0]
 
             # Verificar si ese registro aún existe
             registro = self.db.query(RegistroCompraModel).filter(
@@ -130,7 +130,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al buscar registro huérfano: {e}", exc_info=True)
             raise
 
-    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> List[OrdenesCompraModel]:
+    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> list[
+        type[OrdenesCompraModel]]:
         """
         Obtiene todas las órdenes de compra de una cotización y versión específica
 
@@ -177,6 +178,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             id_cotizacion: ID de la cotización
             ordenes: Lista de órdenes de compra
             datos_calculados: Diccionario con montos calculados
+            id_cotizacion_versiones: ID de la versión de la cotización (opcional para compatibilidad)
+
 
         Returns:
             RegistroCompraModel: Registro guardado/actualizado
@@ -264,9 +267,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 )
                 self.db.add(orden_detalle)
 
-            self.db.commit()
-            logger.info(f"✅ Registro de compra guardado exitosamente: ID {registro.compra_id}")
-
+            # --- FIX: Mover la lógica de auditoría ANTES del commit ---
             # Registrar auditoría
             if es_actualizacion:
                 auditoria_service.registrar_actualizacion_registro(
@@ -286,6 +287,10 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                     datos_nuevos=datos_calculados,
                     ordenes=ordenes
                 )
+
+            # Commit atómico de todas las operaciones (registro, detalles, auditoría)
+            self.db.commit()
+            logger.info(f"✅ Registro de compra guardado exitosamente: ID {registro.compra_id}")
 
             return registro
 
@@ -353,9 +358,11 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             id_cotizacion_versiones = None
 
             if ordenes_detalle:
-                ordenes = self.db.query(OrdenesCompraModel).filter(
-                    OrdenesCompraModel.id_orden.in_([o.id_orden for o in ordenes_detalle])
-                ).all()
+                ordenes_ids = [o.id_orden for o in ordenes_detalle]
+                if ordenes_ids:
+                    ordenes = self.db.query(OrdenesCompraModel).filter(
+                        OrdenesCompraModel.id_orden.in_(ordenes_ids)
+                    ).all()
 
                 # Obtener cotización desde la primera orden
                 if ordenes:
@@ -388,8 +395,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             auditoria_service = RegistroCompraAuditoriaService(self.db)
             auditoria_service.registrar_eliminacion_registro(
                 compra_id=compra_id,
-                id_cotizacion=id_cotizacion,
-                id_cotizacion_versiones=id_cotizacion_versiones,
+                id_cotizacion=int(id_cotizacion) if id_cotizacion else None,
+                id_cotizacion_versiones=int(id_cotizacion_versiones) if id_cotizacion_versiones else None,
                 datos_anteriores=datos_anteriores,
                 ordenes=ordenes,
                 razon="No quedan órdenes de compra asociadas - Eliminación automática al eliminar última orden"

@@ -64,7 +64,7 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
             if todos_sin_igv:
                 # CASO 1: TODOS SIN IGV - No uniformizar, el Excel mostrará SUBTOTAL + IGV + TOTAL
                 igv = 'SIN IGV'
-                print(f"[EXCEL GENERATOR] TODOS SIN IGV - Excel mostrará desglose de IGV")
+                print(f" [EXCEL GENERATOR] TODOS SIN IGV - Excel mostrará desglose de IGV ")
                 for r in resultados_contacto:
                     datos_para_excel.append({
                         'CANT': r.CANT,
