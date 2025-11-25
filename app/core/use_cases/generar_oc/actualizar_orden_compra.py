@@ -1,7 +1,6 @@
 import logging
 from datetime import datetime
 from typing import Optional
-from fastapi import HTTPException
 from sqlalchemy.orm import Session
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
@@ -9,6 +8,12 @@ from app.core.ports.services.file_storage_port import FileStoragePort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import ActualizarOrdenCompraRequest
 from app.core.services.ordenes_compra_auditoria_service import OrdenesCompraAuditoriaService
+from app.core.domain.exceptions import (
+    OrdenCompraNotFoundError,
+    ActualizacionOrdenError,
+    GeneracionExcelError,
+    AlmacenamientoError,
+)
 from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -79,7 +84,10 @@ class ActualizarOrdenCompra:
             dict: Resultado de la operación con status, mensaje y nueva URL del Excel
 
         Raises:
-            HTTPException: Si hay errores durante el proceso
+            OrdenCompraNotFoundError: Si la orden no existe
+            ActualizacionOrdenError: Si hay error en la actualización
+            GeneracionExcelError: Si falla la generación del Excel
+            AlmacenamientoError: Si falla la subida a S3
         """
         try:
             logger.info(f"Iniciando actualización de orden de compra ID: {request.idOrden}")
@@ -87,10 +95,7 @@ class ActualizarOrdenCompra:
             # 1. Validar que la orden existe y cargar relación con registro_compra (eager loading)
             orden = self.ordenes_compra_repo.obtener_orden_por_id(request.idOrden, with_registro=True)
             if not orden:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Orden de compra con ID {request.idOrden} no encontrada"
-                )
+                raise OrdenCompraNotFoundError(request.idOrden)
 
             logger.info(f"Orden encontrada: {request.numeroOc}")
 
@@ -368,9 +373,9 @@ class ActualizarOrdenCompra:
             # 7. Validar que hay productos para generar Excel
             if not productos_data:
                 self.db.rollback()
-                raise HTTPException(
-                    status_code=400,
-                    detail="No hay productos para generar el archivo Excel. Debe haber al menos un producto."
+                raise ActualizacionOrdenError(
+                    request.idOrden,
+                    "No hay productos para generar el archivo Excel. Debe haber al menos un producto."
                 )
 
             # Generar Excel con datos actualizados
@@ -384,10 +389,7 @@ class ActualizarOrdenCompra:
 
             if not excel_files:
                 self.db.rollback()
-                raise HTTPException(
-                    status_code=500,
-                    detail="No se pudo generar el archivo Excel"
-                )
+                raise GeneracionExcelError("No se pudo generar el archivo Excel")
 
             # 8. Subir PRIMERO el nuevo Excel a S3 (antes de eliminar el antiguo)
             logger.info("Subiendo nuevo archivo a S3...")
@@ -396,10 +398,8 @@ class ActualizarOrdenCompra:
             if not urls:
                 # Si falla la subida, hacer rollback de TODO (el antiguo sigue en S3)
                 self.db.rollback()
-                raise HTTPException(
-                    status_code=500,
-                    detail="No se pudo subir el archivo a S3"
-                )
+                filename = list(excel_files.keys())[0] if excel_files else None
+                raise AlmacenamientoError("No se pudo subir el archivo a S3", filename=filename)
 
             nueva_url_s3 = urls[0]
             logger.info(f"Nuevo archivo subido a S3: {nueva_url_s3}")
@@ -458,23 +458,17 @@ class ActualizarOrdenCompra:
                 "total_orden": float(total_orden)
             }
 
-        except ValueError as e:
-            # Rollback en caso de error de validación
+        except (OrdenCompraNotFoundError, ActualizacionOrdenError, GeneracionExcelError, AlmacenamientoError) as e:
+            # Excepciones de dominio - propagar sin modificar
             self.db.rollback()
-            logger.error(f"❌ Error de validación - Rollback ejecutado: {e}")
-            raise HTTPException(status_code=404, detail=str(e))
-
-        except HTTPException as http_ex:
-            # Rollback en caso de HTTPException
-            self.db.rollback()
-            logger.error(f"❌ HTTPException - Rollback ejecutado: {http_ex.detail}")
+            logger.error(f"❌ Error de dominio - Rollback ejecutado: {e}")
             raise
 
         except Exception as e:
-            # Rollback en caso de cualquier otro error
+            # Excepciones inesperadas - envolver en ActualizacionOrdenError
             self.db.rollback()
             logger.error(f"❌ Error crítico - Rollback ejecutado al actualizar orden {request.idOrden}: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error interno al actualizar la orden de compra: {str(e)}"
+            raise ActualizacionOrdenError(
+                request.idOrden,
+                f"Error inesperado: {str(e)}"
             )

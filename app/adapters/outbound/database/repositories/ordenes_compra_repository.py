@@ -410,25 +410,31 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al hacer rollback: {e}")
             raise
 
-    def obtener_info_oc(self, request: GenerarOCRequest) -> List[Any]:
+    def obtener_info_oc(self, query: "ObtenerInfoOCQuery") -> List["DatosExcelOC"]:
         """
-        Obtiene información de productos para generar orden de compra desde las tablas de órdenes ya guardadas
+        Obtiene información de productos para generar orden de compra desde las tablas de órdenes ya guardadas.
 
         Args:
-            request (GenerarOCRequest): Datos de la solicitud
+            query: Query del dominio con los criterios para generar OC
 
         Returns:
-            List[Any]: Lista de resultados de la consulta
+            List[DatosExcelOC]: Lista de DTOs del dominio con datos para Excel
+
+        Raises:
+            Exception: Si hay error en la consulta
         """
+        from app.core.domain.dtos.orden_compra_dtos import ObtenerInfoOCQuery, DatosExcelOC
+        from app.core.domain.mappers.orden_compra_mappers import OrdenCompraMapper
+
         try:
             logger.info(
-                f"Obteniendo info OC para cotización: {request.id_cotizacion}, versión: {request.id_version}"
+                f"Obteniendo info OC para cotización: {query.id_cotizacion}, versión: {query.id_version}"
             )
-            logger.debug(f"Contactos de proveedor: {request.id_contacto_proveedor}")
+            logger.debug(f"Contactos de proveedor: {query.id_contacto_proveedor}")
 
             # Simplificar: aplicar filtros directamente sin subconsulta innecesaria
             # Esto permitirá obtener TODAS las órdenes que coincidan, no solo una
-            query = (
+            sql_query = (
                 self.db.query(
                     OrdenesCompraModel.correlative.label("NUMERO_OC"),
                     OrdenesCompraModel.id_cotizacion.label("IDCOTIZACION"),
@@ -485,22 +491,28 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     == ProveedorContactosModel.id_proveedor_contacto,
                 )
                 .filter(
-                    OrdenesCompraModel.id_cotizacion == request.id_cotizacion,
-                    OrdenesCompraModel.id_cotizacion_versiones == request.id_version,
+                    OrdenesCompraModel.id_cotizacion == query.id_cotizacion,
+                    OrdenesCompraModel.id_cotizacion_versiones == query.id_version,
                     OrdenesCompraModel.id_proveedor_contacto.in_(
-                        request.id_contacto_proveedor
+                        query.id_contacto_proveedor
                     ),
                 )
                 .order_by(OrdenesCompraModel.id_orden.desc())
             )
 
-            resultados = query.all()
-            logger.info(f"Consulta ejecutada. Resultados obtenidos: {len(resultados)}")
+            resultados_raw = sql_query.all()
+            logger.info(f"Consulta ejecutada. Resultados obtenidos: {len(resultados_raw)}")
 
-            if resultados:
-                logger.debug(f"Primer resultado: {resultados[0]}")
+            # Mapear filas de BD a DTOs del dominio
+            resultados_dtos = [
+                OrdenCompraMapper.from_db_row_to_datos_excel(row)
+                for row in resultados_raw
+            ]
 
-            return resultados
+            if resultados_dtos:
+                logger.debug(f"Primer resultado mapeado: {resultados_dtos[0]}")
+
+            return resultados_dtos
 
         except Exception as e:
             logger.error(f"Error en obtener_info_oc: {e}", exc_info=True)
@@ -756,7 +768,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al actualizar orden de compra {id_orden}: {e}")
             raise
 
-    def obtener_detalles_orden(self, id_orden: int) -> List[Any]:
+    def obtener_detalles_orden(self, id_orden: int) -> List["DetalleProductoOC"]:
         """
         Obtiene los detalles de una orden de compra
 
@@ -764,15 +776,43 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             id_orden (int): ID de la orden de compra
 
         Returns:
-            List[Any]: Lista de detalles de la orden
+            List[DetalleProductoOC]: Lista de detalles de la orden con tipado fuerte
         """
+        from app.core.domain.dtos.orden_compra_dtos import DetalleProductoOC
+        from app.core.domain.mappers.orden_compra_mappers import OrdenCompraMapper
+
         try:
-            detalles = (
-                self.db.query(OrdenesCompraDetallesModel)
+            # Query con JOINs para obtener información completa del producto
+            detalles_query = (
+                self.db.query(
+                    OrdenesCompraDetallesModel.id_oc_detalle,
+                    OrdenesCompraDetallesModel.id_orden,
+                    OrdenesCompraDetallesModel.id_producto,
+                    ProductosModel.nombre.label('nombre_producto'),
+                    OrdenesCompraDetallesModel.cantidad,
+                    OrdenesCompraDetallesModel.precio_unitario,
+                    OrdenesCompraDetallesModel.precio_total,
+                    OrdenesCompraDetallesModel.igv,
+                    OrdenesCompraDetallesModel.id_producto_cotizacion,
+                    MarcasModel.nombre.label('marca'),
+                    UnidadMedidaModel.descripcion.label('unidad_medida'),
+                    ProductosModel.modelo_marca.label('modelo'),
+                )
+                .select_from(OrdenesCompraDetallesModel)
+                .join(ProductosModel, OrdenesCompraDetallesModel.id_producto == ProductosModel.id_producto)
+                .outerjoin(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)
+                .outerjoin(UnidadMedidaModel, ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida)
                 .filter(OrdenesCompraDetallesModel.id_orden == id_orden)
                 .all()
             )
-            return detalles
+
+            # Mapear filas de BD a DTOs del dominio
+            detalles_dtos = [
+                OrdenCompraMapper.from_db_row_to_detalle_producto(row)
+                for row in detalles_query
+            ]
+
+            return detalles_dtos
 
         except Exception as e:
             logger.error(f"Error al obtener detalles de orden {id_orden}: {e}")

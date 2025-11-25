@@ -2,6 +2,12 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from pathlib import Path
 
+
+def dividir_texto(texto, max_longitud):
+    """Función para dividir el texto largo en partes de longitud máxima"""
+    return [texto[i:i + max_longitud] for i in range(0, len(texto), max_longitud)]
+
+
 class CartaGarantia:
 
     BASE_DIR = Path(__file__).resolve().parent
@@ -15,11 +21,7 @@ class CartaGarantia:
         self.numero_cotizacion = numero_cotizacion
         self.nombre_pdf = f"{self.BASE_DIR}/files/{nombre_pdf}"
         self.header_image = f"{self.BASE_DIR}/img/corpe_head.png" 
-        self.sello_image = f"{self.BASE_DIR}/img/sello.png" 
-
-    def dividir_texto(self, texto, max_longitud):
-        """Función para dividir el texto largo en partes de longitud máxima"""
-        return [texto[i:i + max_longitud] for i in range(0, len(texto), max_longitud)]
+        self.sello_image = f"{self.BASE_DIR}/img/sello.png"
 
     def crear_pdf(self):
         # Crear el canvas
@@ -82,7 +84,7 @@ class CartaGarantia:
         ]
 
         # Dividir el nombre del cliente si es demasiado largo
-        cliente_dividido = self.dividir_texto(self.cliente, 60)
+        cliente_dividido = dividir_texto(self.cliente, 60)
 
         # Mostrar cada línea del contenido
         for line in content:
