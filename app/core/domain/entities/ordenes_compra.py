@@ -1,5 +1,6 @@
 from dataclasses import dataclass
-from typing import List
+from typing import List, Optional
+
 
 @dataclass
 class OrdenesCompraItem:
@@ -8,7 +9,7 @@ class OrdenesCompraItem:
     p_unitario: float
     p_total: float
     igv: str = 'CON IGV'  # Tipo de IGV del producto: 'CON IGV' o 'SIN IGV'
-    id_producto_cotizacion: int = None  # Relación con productos_cotizaciones
+    id_producto_cotizacion: Optional[int] = None  # Relación con productos_cotizaciones
 
 @dataclass
 class OrdenesCompra:

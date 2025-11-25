@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Any
+from typing import List, Any, Optional
 
 from sqlalchemy import case, func
 from sqlalchemy.orm import Session
@@ -32,7 +32,7 @@ from app.adapters.outbound.database.models.registro_compra_orden_model import Re
 logger = logging.getLogger(__name__)
 
 
-def handle_orden_compra_evento(event_data: dict):
+def handle_orden_compra_evento(event_data: dict) -> None:
     """
     Handler que se ejecuta en thread separado con NUEVA transacción
     Equivalente a @Transactional(propagation = REQUIRES_NEW)
@@ -67,7 +67,7 @@ def handle_orden_compra_evento(event_data: dict):
 
 class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
-    def __init__(self, db: Session):
+    def __init__(self, db: Session) -> None:
         self.db = db
         self.event_dispatcher = get_event_dispatcher()
         self._pending_orders = None  # Para guardar las órdenes entre save_batch_sin_commit y commit_con_evento
@@ -150,7 +150,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 id_proveedor_contacto=order.id_proveedor_contacto,
                 moneda=order.moneda,
                 pago=order.pago,
-                igv=order.igv,
+                igv=str(order.igv),
                 total=total_calculado,
                 entrega=order.entrega,
                 id_cotizacion_versiones=order.id_cotizacion_versiones,
@@ -328,12 +328,6 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 .all()
             )
 
-            # Crear un map para acceso O(1)
-            ordenes_map = {
-                orden_tuple[0].id_proveedor_contacto: orden_tuple
-                for orden_tuple in ordenes_bd
-            }
-
             # Obtener detalles de productos para cada orden en UN SOLO query
             orden_ids = [orden_tuple[0].id_orden for orden_tuple in ordenes_bd]
             productos_detalles = (
@@ -363,35 +357,32 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             auditoria_service = OrdenesCompraAuditoriaService(self.db)
 
             # Registrar auditoría para cada orden
-            for order in orders:
-                orden_tuple = ordenes_map.get(order.id_proveedor_contacto)
+            # FIX: Iterar directamente sobre las órdenes obtenidas de la BD para evitar errores con contactos duplicados
+            for orden_bd, razon_social, nombre_contacto in ordenes_bd:
+                total_orden = float(orden_bd.total) if orden_bd.total else 0.0
+                productos = productos_por_orden.get(orden_bd.id_orden, [])
 
-                if orden_tuple:
-                    orden_bd, razon_social, nombre_contacto = orden_tuple
-                    total_orden = float(orden_bd.total) if orden_bd.total else 0.0
-                    productos = productos_por_orden.get(orden_bd.id_orden, [])
+                # Otros datos
+                otros_datos = {
+                    'moneda': orden_bd.moneda,
+                    'pago': orden_bd.pago,
+                    'entrega': orden_bd.entrega,
+                    'consorcio': orden_bd.consorcio,
+                    'igv': orden_bd.igv
+                }
 
-                    # Otros datos
-                    otros_datos = {
-                        'moneda': orden_bd.moneda,
-                        'pago': orden_bd.pago,
-                        'entrega': orden_bd.entrega,
-                        'consorcio': orden_bd.consorcio,
-                        'igv': orden_bd.igv
-                    }
-
-                    auditoria_service.registrar_creacion_orden(
-                        id_orden_compra=orden_bd.id_orden,
-                        id_usuario=order.id_usuario,
-                        id_cotizacion=order.id_cotizacion,
-                        id_cotizacion_versiones=order.id_cotizacion_versiones,
-                        id_proveedor=orden_bd.id_proveedor,
-                        id_contacto=orden_bd.id_proveedor_contacto,
-                        productos=productos,
-                        monto_total=total_orden,
-                        otros_datos=otros_datos
-                    )
-                    logger.debug(f"Auditoría registrada para orden {orden_bd.correlative}")
+                auditoria_service.registrar_creacion_orden(
+                    id_orden_compra=orden_bd.id_orden,
+                    id_usuario=orden_bd.id_usuario,
+                    id_cotizacion=orden_bd.id_cotizacion,
+                    id_cotizacion_versiones=orden_bd.id_cotizacion_versiones,
+                    id_proveedor=orden_bd.id_proveedor,
+                    id_contacto=orden_bd.id_proveedor_contacto,
+                    productos=productos,
+                    monto_total=total_orden,
+                    otros_datos=otros_datos
+                )
+                logger.debug(f"Auditoría registrada para orden {orden_bd.correlative}")
 
             # Ahora sí, hacer commit de TODO (órdenes, detalles, auditorías)
             # Al hacer commit, el evento se disparará automáticamente
@@ -550,7 +541,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
     def obtener_ordenes_por_contacto_y_version(
         self, id_cotizacion: int, id_version: int, id_contacto: int
-    ) -> list[type[OrdenesCompraModel]] | list[Any]:
+    ) -> List[OrdenesCompraModel]:
         """
         Obtiene las órdenes de compra de un contacto específico en una versión de cotización
 
@@ -583,7 +574,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             logger.error(f"Error al obtener órdenes por contacto: {e}")
             return []
 
-    def obtener_orden_por_id(self, id_orden: int, with_registro: bool = False) -> type[OrdenesCompraModel]:
+    def obtener_orden_por_id(self, id_orden: int, with_registro: bool = False) -> Optional[OrdenesCompraModel]:
         """
         Obtiene una orden de compra por su ID
 
@@ -592,7 +583,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             with_registro (bool): Si True, carga la relación registro_compra_orden usando eager loading
 
         Returns:
-            OrdenesCompra: Orden de compra encontrada
+            Optional[OrdenesCompraModel]: Orden de compra encontrada o None si no existe
 
         Raises:
             ValueError: Si la orden no existe
@@ -664,9 +655,9 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             auditoria_service = RegistroCompraAuditoriaService(self.db)
             auditoria_service.registrar_eliminacion_orden(
                 id_orden=id_orden,
-                numero_oc=numero_oc,
-                id_cotizacion=id_cotizacion,
-                id_cotizacion_versiones=id_cotizacion_versiones,
+                numero_oc=str(numero_oc),
+                id_cotizacion=int(id_cotizacion),
+                id_cotizacion_versiones=int(id_cotizacion_versiones),
                 monto_orden=monto_orden,
                 tenia_registro=tenia_registro,
                 compra_id=compra_id
@@ -981,7 +972,8 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 )
                 .join(
                     UnidadMedidaModel,
-                    ProductosModel.id_unidad_medida == UnidadMedidaModel.id_unidad_medida,
+                    ProductosModel.id_unidad_medida
+                    == UnidadMedidaModel.id_unidad_medida,
                 )
                 .join(MarcasModel, ProductosModel.id_marca == MarcasModel.id_marca)
                 .join(

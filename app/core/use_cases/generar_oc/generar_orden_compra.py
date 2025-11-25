@@ -1,6 +1,5 @@
 import asyncio
 import logging
-import traceback
 from typing import List
 
 from fastapi import HTTPException
