@@ -37,7 +37,8 @@ class OrdenesCompraAuditoriaService:
         id_contacto: int,
         productos: List[Dict[str, Any]],  # productos con id_producto
         monto_total: float,
-        otros_datos: Optional[Dict[str, Any]] = None
+        otros_datos: Optional[Dict[str, Any]] = None,
+        numero_oc: str = None
     ) -> None:
         """
         Registra la creación de una nueva orden de compra.
@@ -52,6 +53,7 @@ class OrdenesCompraAuditoriaService:
             productos: Lista de productos con id_producto
             monto_total: Monto total de la orden
             otros_datos: Otros datos (moneda, pago, entrega)
+            numero_oc: Número correlativo de la OC (ej: OC-000512-2025)
         """
         try:
             cantidad_productos = len(productos)
@@ -75,6 +77,7 @@ class OrdenesCompraAuditoriaService:
                 tipo_operacion="CREACION",
                 fecha_evento=datetime.now(),
                 id_orden_compra=id_orden_compra,
+                numero_oc=numero_oc,  # Guardar número de OC
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
@@ -114,7 +117,8 @@ class OrdenesCompraAuditoriaService:
         monto_anterior: Optional[float] = None,
         monto_nuevo: Optional[float] = None,
         # Otros cambios
-        otros_cambios: Optional[Dict[str, Dict[str, Any]]] = None
+        otros_cambios: Optional[Dict[str, Dict[str, Any]]] = None,
+        numero_oc: str = None
     ) -> None:
         """
         Registra la actualización de una orden de compra.
@@ -134,6 +138,7 @@ class OrdenesCompraAuditoriaService:
             monto_anterior: Monto anterior
             monto_nuevo: Monto nuevo
             otros_cambios: Otros cambios (moneda, pago, entrega) en formato {'campo': {'anterior': X, 'nuevo': Y}}
+            numero_oc: Número correlativo de la OC (ej: OC-000512-2025)
         """
         try:
             # Construir descripción
@@ -213,6 +218,7 @@ class OrdenesCompraAuditoriaService:
                 tipo_operacion="ACTUALIZACION",
                 fecha_evento=datetime.now(),
                 id_orden_compra=id_orden_compra,
+                numero_oc=numero_oc,  # Guardar número de OC
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,
@@ -242,7 +248,8 @@ class OrdenesCompraAuditoriaService:
         id_proveedor: int,
         id_contacto: int,
         productos: List[Dict[str, Any]],
-        monto_total: float
+        monto_total: float,
+        numero_oc: str = None
     ) -> None:
         """
         Registra la eliminación de una orden de compra.
@@ -256,25 +263,37 @@ class OrdenesCompraAuditoriaService:
             id_contacto: ID del contacto
             productos: Lista de productos que tenía la orden
             monto_total: Monto total de la orden eliminada
+            numero_oc: Número correlativo de la OC (ej: OC-000512-2025)
         """
         try:
             cantidad_productos = len(productos)
 
-            descripcion = (
-                f"Orden de compra eliminada. "
-                f"Tenía {cantidad_productos} producto(s). "
-                f"Monto total: S/ {monto_total:,.2f}"
-            )
+            # Construir descripción con número de OC si está disponible
+            if numero_oc:
+                descripcion = (
+                    f"Orden de compra {numero_oc} (ID: {id_orden_compra}) eliminada. "
+                    f"Tenía {cantidad_productos} producto(s). "
+                    f"Monto total: S/ {monto_total:,.2f}"
+                )
+            else:
+                descripcion = (
+                    f"Orden de compra #{id_orden_compra} eliminada. "
+                    f"Tenía {cantidad_productos} producto(s). "
+                    f"Monto total: S/ {monto_total:,.2f}"
+                )
 
             # Todos los productos pasan a eliminados
             ids_productos = [str(p.get('id_producto')) for p in productos]
             productos_eliminados_json = json.dumps(ids_productos) if ids_productos else None
 
             # Crear registro de auditoría
+            # IMPORTANTE: id_orden_compra se deja en NULL porque la orden será eliminada
+            # Esto evita el error de foreign key constraint al hacer commit
             auditoria = OrdenesCompraAuditoriaModel(
                 tipo_operacion="ELIMINACION",
                 fecha_evento=datetime.now(),
-                id_orden_compra=id_orden_compra,
+                id_orden_compra=None,  # NULL porque la orden será eliminada en la misma transacción
+                numero_oc=numero_oc,  # Guardar número de OC para mantener historial
                 id_usuario=id_usuario,
                 id_cotizacion=id_cotizacion,
                 id_cotizacion_versiones=id_cotizacion_versiones,

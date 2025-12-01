@@ -13,5 +13,5 @@ def get_provider_contacts(
     use_case: GetProviderContactsUseCase = Depends(get_provider_contacts_use_case)
 ):
     """Obtiene todos los contactos de un proveedor específico."""
-    # El caso de uso devuelve entidades de dominio, FastAPI las convierte a DTOs
+    # El caso de uso devuelve entidades de dominio, FastAPI las convierte a DTO
     return use_case.execute(id_proveedor)

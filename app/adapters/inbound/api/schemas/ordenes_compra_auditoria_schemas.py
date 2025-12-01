@@ -10,8 +10,8 @@ class OrdenCompraAuditoriaResponse(BaseModel):
     fecha_evento: datetime = Field(..., description="Fecha y hora del evento")
     tipo_operacion: str = Field(..., description="Tipo de operación: CREACION, ACTUALIZACION, ELIMINACION")
 
-    # Datos obtenidos por JOIN (no almacenados directamente)
-    numero_oc: str = Field(..., description="Número correlativo de la OC (obtenido por JOIN)")
+    # Datos de la orden
+    numero_oc: str = Field(..., description="Número correlativo de la OC (ej: OC-000512-2025)")
     nombre_usuario: str = Field(..., description="Nombre completo del usuario (obtenido por JOIN)")
 
     # Cambios en formato concatenado con nombres resueltos

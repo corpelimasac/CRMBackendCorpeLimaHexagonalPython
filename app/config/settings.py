@@ -14,7 +14,6 @@ from pydantic_settings import BaseSettings
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 dotenv_path = BASE_DIR / ".env"
 
-
 class Settings(BaseSettings):
     """
     Configuración de la aplicación con soporte para múltiples entornos.

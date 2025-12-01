@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, Query, HTTPException
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import (
     OrdenesCompraRequest,
     ActualizarOrdenCompraRequest,
@@ -19,6 +19,17 @@ from app.dependencies import (
     get_update_purchase_order_use_case,
     get_obtener_purchase_order_use_case,
     get_listar_auditoria_orden_compra_use_case
+)
+from app.core.domain.exceptions import (
+    OrdenCompraError,
+    OrdenCompraNotFoundError,
+    ProductosSinRelacionError,
+    VersionCotizacionNotFoundError,
+    DatosInsuficientesError,
+    GeneracionExcelError,
+    AlmacenamientoError,
+    ActualizacionOrdenError,
+    EliminacionOrdenError,
 )
 from typing import Optional
 from datetime import datetime
@@ -56,6 +67,29 @@ def _log_error(operacion: str, error: Exception):
 
 @router.post("/generar")
 async def create_order(order: OrdenesCompraRequest, use_case: GenerarOrdenCompra = Depends(get_generate_purchase_order_use_case)):
+    """
+    Crea nuevas órdenes de compra.
+
+    Este endpoint:
+    1. Valida la versión de cotización
+    2. Valida que los productos tengan relación con cotización
+    3. Guarda las órdenes en BD
+    4. Genera archivos Excel
+    5. Sube a S3
+    6. Confirma transacción y dispara eventos
+
+    Args:
+        order: Datos de las órdenes a crear
+
+    Returns:
+        dict: Status y URLs de los archivos generados
+
+    Raises:
+        HTTPException 400: Error de validación (productos sin relación, versión inexistente)
+        HTTPException 404: No hay datos para generar órdenes
+        HTTPException 500: Error de infraestructura (Excel, S3)
+        HTTPException 503: Servicio de almacenamiento no disponible
+    """
     try:
         _log_inicio("🚀 INICIO - Creación de órdenes de compra")
         logger.info(f"📦 Request: {len(order.data)} órdenes a procesar")
@@ -65,9 +99,43 @@ async def create_order(order: OrdenesCompraRequest, use_case: GenerarOrdenCompra
 
         _log_fin(f"✅ FIN - {len(urls)} URLs generadas")
         return {"status": "Órdenes de compra generadas", "urls": urls}
+
+    except ProductosSinRelacionError as e:
+        _log_error("create_order", e)
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except VersionCotizacionNotFoundError as e:
+        _log_error("create_order", e)
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
+        )
+    except DatosInsuficientesError as e:
+        _log_error("create_order", e)
+        raise HTTPException(
+            status_code=404,
+            detail=str(e)
+        )
+    except AlmacenamientoError as e:
+        _log_error("create_order", e)
+        raise HTTPException(
+            status_code=503,
+            detail=f"Servicio de almacenamiento no disponible: {str(e)}"
+        )
+    except (GeneracionExcelError, OrdenCompraError) as e:
+        _log_error("create_order", e)
+        raise HTTPException(
+            status_code=500,
+            detail=str(e)
+        )
     except Exception as e:
         _log_error("create_order", e)
-        raise
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error inesperado: {str(e)}"
+        )
 
 
 @router.get("/{id_orden}", response_model=OrdenCompraDetalleResponse)
@@ -97,9 +165,13 @@ def get_order(
         resultado = use_case.execute(id_orden)
         _log_fin("✅ FIN - Orden obtenida exitosamente")
         return resultado
+
+    except OrdenCompraNotFoundError as e:
+        _log_error("get_order", e)
+        raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         _log_error("get_order", e)
-        raise
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
 
 @router.put("/actualizar")
@@ -135,9 +207,22 @@ async def update_order(
         resultado = await use_case.execute(request)
         _log_fin("✅ FIN - Orden actualizada exitosamente")
         return resultado
+
+    except OrdenCompraNotFoundError as e:
+        _log_error("update_order", e)
+        raise HTTPException(status_code=404, detail=str(e))
+    except ActualizacionOrdenError as e:
+        _log_error("update_order", e)
+        raise HTTPException(status_code=400, detail=str(e))
+    except GeneracionExcelError as e:
+        _log_error("update_order", e)
+        raise HTTPException(status_code=500, detail=str(e))
+    except AlmacenamientoError as e:
+        _log_error("update_order", e)
+        raise HTTPException(status_code=503, detail=f"Servicio de almacenamiento no disponible: {str(e)}")
     except Exception as e:
         _log_error("update_order", e)
-        raise
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
 
 @router.delete("/{id_orden}")
@@ -166,9 +251,19 @@ async def delete_order(
         resultado = use_case.execute(id_orden)
         _log_fin("✅ FIN - Orden eliminada exitosamente")
         return resultado
+
+    except OrdenCompraNotFoundError as e:
+        _log_error("delete_order", e)
+        raise HTTPException(status_code=404, detail=str(e))
+    except AlmacenamientoError as e:
+        _log_error("delete_order", e)
+        raise HTTPException(status_code=503, detail=f"Servicio de almacenamiento no disponible: {str(e)}")
+    except EliminacionOrdenError as e:
+        _log_error("delete_order", e)
+        raise HTTPException(status_code=500, detail=str(e))
     except Exception as e:
         _log_error("delete_order", e)
-        raise
+        raise HTTPException(status_code=500, detail=f"Error inesperado: {str(e)}")
 
 
 @router.get("/auditoria/logs", response_model=ListarAuditoriasResponse)

@@ -24,11 +24,15 @@ class OrdenesCompraAuditoriaModel(Base):
     tipo_operacion = Column(String(50), nullable=False,
                            comment="CREACION, ACTUALIZACION, ELIMINACION")
 
-    # Referencias principales (numero_oc se obtiene por JOIN)
-    # Se permite NULL para mantener el historial cuando se elimina una orden
+    # Referencias principales
+    # Se permite NULL en id_orden_compra para mantener el historial cuando se elimina una orden
     id_orden_compra = Column(BIGINT, ForeignKey("ordenes_compra.id_orden", ondelete="SET NULL"),
                             nullable=True, index=True,
                             comment="ID de la orden de compra (NULL si fue eliminada)")
+
+    # Número correlativo de la OC (se guarda directamente para mantener historial)
+    numero_oc = Column(String(50), nullable=True,
+                      comment="Número correlativo de la OC (ej: OC-000512-2025)")
 
     # Usuario que realizó el cambio
     id_usuario = Column(BIGINT, ForeignKey("usuarios.id_usuario"), nullable=False,

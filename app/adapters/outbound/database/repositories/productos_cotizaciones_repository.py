@@ -1,6 +1,6 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import case, select, Row
-from typing import List, Any, Sequence
+from sqlalchemy import case, select
+from typing import List
 import logging
 
 from app.adapters.outbound.database.models.productos_cotizaciones_model import ProductosCotizacionesModel
@@ -13,6 +13,8 @@ from app.adapters.outbound.database.models.cotizaciones_versiones_model import C
 from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 from app.core.ports.repositories.productos_cotizaciones_repository import ProductosCotizacionesRepositoryPort
+from app.core.domain.dtos.producto_cotizacion_dtos import ProductoCotizacionDisponible
+from app.core.domain.mappers.producto_cotizacion_mappers import ProductoCotizacionMapper
 
 logger = logging.getLogger(__name__)
 
@@ -24,20 +26,23 @@ class ProductosCotizacionesRepository(ProductosCotizacionesRepositoryPort):
     def __init__(self, db: Session):
         self.db = db
 
-    def obtener_productos_cotizaciones(self, id_cotizacion: int, id_cotizacion_version: int) -> Sequence[Row[
-        tuple[Any, ...] | Any]] | list[Any]:
+    def obtener_productos_cotizaciones(
+        self,
+        id_cotizacion: int,
+        id_cotizacion_version: int
+    ) -> List[ProductoCotizacionDisponible]:
         """
-        Obtiene la informacion de los productos de la cotizacion que NO tienen OC activa asociada
+        Obtiene la informacion de los productos de la cotizacion que NO tienen OC activa asociada.
 
         IMPORTANTE: Solo retorna productos que están disponibles para generar OC.
         Filtra productos que ya tienen OC activa mediante LEFT JOIN con ordenes_compra_detalles.
 
         Args:
-            id_cotizacion (int): ID de la cotización
-            id_cotizacion_version (int): ID de la versión de la cotización
+            id_cotizacion: ID de la cotización
+            id_cotizacion_version: ID de la versión de la cotización
 
         Returns:
-            List[Any]: Lista de resultados de la consulta (solo productos sin OC activa)
+            List[ProductoCotizacionDisponible]: Lista de productos disponibles con tipado fuerte
         """
         try:
             logger.info(f"Obteniendo productos disponibles (sin OC activa) para cotización: {id_cotizacion}, versión: {id_cotizacion_version}")
@@ -95,7 +100,15 @@ class ProductosCotizacionesRepository(ProductosCotizacionesRepositoryPort):
 
             result = self.db.execute(stmt).all()
             logger.info(f"Se obtuvieron {len(result)} productos disponibles (sin OC activa)")
-            return result
+
+            # Mapear filas de BD a DTOs del dominio
+            productos_disponibles = [
+                ProductoCotizacionMapper.from_db_row_to_disponible(row)
+                for row in result
+            ]
+
+            return productos_disponibles
+
         except Exception as e:
             logger.error(f"Error al obtener productos de la cotización: {e}")
             return []

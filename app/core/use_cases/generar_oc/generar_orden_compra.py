@@ -1,13 +1,19 @@
 import asyncio
 import logging
-import traceback
 from typing import List
-
-from fastapi import HTTPException
 
 from app.adapters.inbound.api.schemas.generar_oc_schemas import GenerarOCRequest
 from app.adapters.inbound.api.schemas.ordenes_compra_schemas import OrdenesCompraRequest
 from app.core.domain.entities.ordenes_compra import OrdenesCompra, OrdenesCompraItem
+from app.core.domain.exceptions import (
+    ProductosSinRelacionError,
+    VersionCotizacionNotFoundError,
+    DatosInsuficientesError,
+    GeneracionExcelError,
+    AlmacenamientoError,
+    OrdenCompraError,
+)
+from app.core.domain.dtos.orden_compra_dtos import ObtenerInfoOCQuery
 from app.core.ports.repositories.cotizaciones_versiones_repository import CotizacionVersionesRepositoryPort
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.core.ports.services.file_storage_port import FileStoragePort
@@ -43,8 +49,8 @@ class GenerarOrdenCompra:
         try:
             logger.info(f"Procesando contacto {id_contacto}")
 
-            # Crear un request específico para este contacto
-            request_contacto = GenerarOCRequest(
+            # Crear un query del dominio específico para este contacto
+            query_contacto = ObtenerInfoOCQuery(
                 id_usuario=generar_oc_request.id_usuario,
                 id_cotizacion=generar_oc_request.id_cotizacion,
                 id_version=generar_oc_request.id_version,
@@ -53,16 +59,23 @@ class GenerarOrdenCompra:
             )
 
             # Generar Excel para este contacto específico
-            excel_files = self.excel_generator.generate_for_order(request_contacto)
+            excel_files = self.excel_generator.generate_for_order(query_contacto)
 
             if not excel_files:
-                raise ValueError(f"No se generaron archivos Excel para el contacto {id_contacto}")
+                raise GeneracionExcelError(
+                    f"No se generaron archivos Excel",
+                    id_contacto=id_contacto
+                )
 
             # Subir archivos a S3
             urls = await self.file_storage.save_multiple(excel_files)
 
             if not urls:
-                raise ValueError(f"No se pudo subir a S3 para el contacto {id_contacto}")
+                filename = list(excel_files.keys())[0] if excel_files else None
+                raise AlmacenamientoError(
+                    f"No se pudo subir a S3 para el contacto {id_contacto}",
+                    filename=filename
+                )
 
             url_s3 = urls[0]
             logger.info(f"Excel generado y subido exitosamente para el contacto {id_contacto}: {url_s3}")
@@ -87,10 +100,28 @@ class GenerarOrdenCompra:
             raise
 
     async def execute(self, request: OrdenesCompraRequest) -> List[str]:
+        """
+        Ejecuta el caso de uso de generación de órdenes de compra.
+
+        Args:
+            request: Request con datos de las órdenes a crear
+
+        Returns:
+            List[str]: URLs de los archivos generados en S3
+
+        Raises:
+            VersionCotizacionNotFoundError: Si la versión de cotización no existe
+            ProductosSinRelacionError: Si hay productos sin id_producto_cotizacion
+            DatosInsuficientesError: Si no hay datos para generar órdenes
+            GeneracionExcelError: Si falla la generación de Excel
+            AlmacenamientoError: Si falla la subida a S3
+            OrdenCompraError: Para otros errores de negocio
+        """
         logger.info("Ejecutando caso de uso GenerarOrdenCompra")
 
+        # Validar versión de cotización
         if not self.cotizacion_version_repo.exists_by_id(request.idCotizacionVersiones):
-            raise ValueError("La versión de cotización especificada no existe.")
+            raise VersionCotizacionNotFoundError(request.idCotizacionVersiones)
 
         logger.info(f"Versión de cotización {request.idCotizacionVersiones} verificada")
 
@@ -108,11 +139,7 @@ class GenerarOrdenCompra:
             ]
 
             if productos_sin_id:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Error: Los siguientes productos no tienen id_producto_cotizacion: {productos_sin_id}. "
-                           f"Este campo es obligatorio para relacionar los productos con la cotización."
-                )
+                raise ProductosSinRelacionError(productos_sin_id)
 
             # Mapear los productos del DTO a la entidad OrdenesCompraItem
             # Guardar los productos tal como vienen del frontend (sin uniformizar)
@@ -167,13 +194,18 @@ class GenerarOrdenCompra:
         )
 
         # PASO 4: Verificar que hay datos para generar Excel
-        resultados = self.ordenes_compra_repo.obtener_info_oc(generar_oc_request)
+        # Crear query del dominio para obtener info OC
+        query_verificacion = ObtenerInfoOCQuery(
+            id_usuario=generar_oc_request.id_usuario,
+            id_cotizacion=generar_oc_request.id_cotizacion,
+            id_version=generar_oc_request.id_version,
+            id_contacto_proveedor=generar_oc_request.id_contacto_proveedor,
+            consorcio=generar_oc_request.consorcio
+        )
+        resultados = self.ordenes_compra_repo.obtener_info_oc(query_verificacion)
         if not resultados:
             self.ordenes_compra_repo.rollback()
-            raise HTTPException(
-                status_code=404,
-                detail="No se encontraron datos para los parámetros especificados"
-            )
+            raise DatosInsuficientesError()
 
         logger.info(f"Total de resultados obtenidos: {len(resultados)}")
 
@@ -203,10 +235,7 @@ class GenerarOrdenCompra:
 
             if not generated_files_urls:
                 self.ordenes_compra_repo.rollback()
-                raise HTTPException(
-                    status_code=500,
-                    detail="No se pudo generar ninguna orden de compra."
-                )
+                raise GeneracionExcelError("No se pudo generar ninguna orden de compra")
 
             # PASO 6: TODO salió bien → COMMIT ÚNICO con evento
             logger.info("✅ Todos los archivos subidos exitosamente. Haciendo commit...")
@@ -215,10 +244,18 @@ class GenerarOrdenCompra:
             logger.info(f"✅ {len(generated_files_urls)} órdenes creadas con éxito - Evento en background")
             return generated_files_urls
 
-        except Exception as e:
-            logger.error(f"❌ Error durante generación/subida: {e}. Haciendo rollback...", exc_info=True)
+        except (ProductosSinRelacionError, VersionCotizacionNotFoundError, DatosInsuficientesError) as e:
+            # Excepciones de negocio - propagar sin modificar
+            logger.error(f"❌ Error de validación: {e}")
             self.ordenes_compra_repo.rollback()
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error al crear órdenes de compra: {str(e)}"
-            )
+            raise
+        except (GeneracionExcelError, AlmacenamientoError) as e:
+            # Excepciones de infraestructura - propagar
+            logger.error(f"❌ Error de infraestructura: {e}. Haciendo rollback...", exc_info=True)
+            self.ordenes_compra_repo.rollback()
+            raise
+        except Exception as e:
+            # Excepciones inesperadas - envolver en OrdenCompraError
+            logger.error(f"❌ Error inesperado durante generación/subida: {e}. Haciendo rollback...", exc_info=True)
+            self.ordenes_compra_repo.rollback()
+            raise OrdenCompraError(f"Error inesperado al crear órdenes de compra: {str(e)}")

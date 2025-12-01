@@ -22,8 +22,8 @@ class GenerarOCRequest(BaseModel):
         example=98,
         gt=0
     )
-    id_contacto_proveedor: list[int] = Field(
-        ..., 
+    id_contacto_proveedor: List[int] = Field(
+        ...,
         description="ID del contacto del proveedor",
         example=[13, 14],
     )

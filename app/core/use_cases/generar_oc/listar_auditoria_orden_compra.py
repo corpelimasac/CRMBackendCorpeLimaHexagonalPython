@@ -223,10 +223,14 @@ class ListarAuditoriaOrdenCompra:
             logger.info(f"Listando auditorías - Página {page}, tamaño {page_size}")
 
             # Query base con LEFT JOINs para incluir todas las auditorías
+            # Usar COALESCE para obtener numero_oc: primero de la tabla auditoria, si no existe hacer JOIN
             query = (
                 self.db.query(
                     OrdenesCompraAuditoriaModel,
-                    OrdenesCompraModel.correlative.label("numero_oc"),
+                    func.coalesce(
+                        OrdenesCompraAuditoriaModel.numero_oc,
+                        OrdenesCompraModel.correlative
+                    ).label("numero_oc"),
                     func.concat(TrabajadoresModel.nombre, ' ', TrabajadoresModel.apellido).label("nombre_usuario")
                 )
                 .outerjoin(OrdenesCompraModel, OrdenesCompraAuditoriaModel.id_orden_compra == OrdenesCompraModel.id_orden)
@@ -241,7 +245,11 @@ class ListarAuditoriaOrdenCompra:
                 filters.append(OrdenesCompraAuditoriaModel.id_orden_compra == id_orden_compra)
 
             if numero_oc:
-                filters.append(OrdenesCompraModel.correlative.like(f"%{numero_oc}%"))
+                # Buscar tanto en la columna numero_oc de auditoria como en el correlative de ordenes_compra
+                filters.append(or_(
+                    OrdenesCompraAuditoriaModel.numero_oc.like(f"%{numero_oc}%"),
+                    OrdenesCompraModel.correlative.like(f"%{numero_oc}%")
+                ))
 
             if tipo_operacion:
                 filters.append(OrdenesCompraAuditoriaModel.tipo_operacion == tipo_operacion.upper())

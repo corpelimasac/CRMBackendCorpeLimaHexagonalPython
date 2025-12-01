@@ -4,7 +4,11 @@ from sqlalchemy.orm import Session
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.adapters.outbound.external_services.aws.s3_service import S3Service
 from app.core.services.ordenes_compra_auditoria_service import OrdenesCompraAuditoriaService
-from fastapi import HTTPException
+from app.core.domain.exceptions import (
+    OrdenCompraNotFoundError,
+    EliminacionOrdenError,
+    AlmacenamientoError,
+)
 from app.config.settings import get_settings
 
 logger = logging.getLogger(__name__)
@@ -59,7 +63,9 @@ class EliminarOrdenCompra:
             dict: Resultado de la operación con status y mensaje
 
         Raises:
-            HTTPException: Si hay errores durante el proceso
+            OrdenCompraNotFoundError: Si la orden no existe
+            AlmacenamientoError: Si falla la eliminación del archivo S3
+            EliminacionOrdenError: Si hay error en la eliminación
         """
         try:
             logger.info(f"Iniciando eliminación de orden de compra ID: {id_orden}")
@@ -84,10 +90,7 @@ class EliminarOrdenCompra:
             )
 
             if not orden_query:
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Orden de compra con ID {id_orden} no encontrada"
-                )
+                raise OrdenCompraNotFoundError(id_orden)
 
             orden, razon_social_proveedor, nombre_contacto = orden_query
             logger.info(f"Orden encontrada: {orden.correlative}")
@@ -122,9 +125,9 @@ class EliminarOrdenCompra:
                 except Exception as e:
                     logger.error(f"Error al eliminar archivo de S3: {e}")
                     # IMPORTANTE: Si falla la eliminación de S3, NO continuar con la BD
-                    raise HTTPException(
-                        status_code=500,
-                        detail=f"No se pudo eliminar el archivo de S3. La orden no fue eliminada. Error: {str(e)}"
+                    raise AlmacenamientoError(
+                        f"No se pudo eliminar el archivo de S3. La orden no fue eliminada. Error: {str(e)}",
+                        filename=orden.ruta_s3
                     )
             else:
                 logger.info("La orden no tiene archivo asociado en S3")
@@ -140,7 +143,8 @@ class EliminarOrdenCompra:
                 id_proveedor=orden.id_proveedor,
                 id_contacto=orden.id_proveedor_contacto,
                 productos=productos_lista,
-                monto_total=monto_total
+                monto_total=monto_total,
+                numero_oc=orden.correlative  # Pasar el número de OC para la auditoría
             )
             logger.info(f"Auditoría de eliminación registrada para orden {orden.correlative}")
 
@@ -156,16 +160,15 @@ class EliminarOrdenCompra:
                 "database_deleted": True
             }
 
-        except ValueError as e:
-            logger.error(f"Error de validación: {e}")
-            raise HTTPException(status_code=404, detail=str(e))
-
-        except HTTPException:
+        except (OrdenCompraNotFoundError, AlmacenamientoError, EliminacionOrdenError) as e:
+            # Excepciones de dominio - propagar sin modificar
+            logger.error(f"Error de dominio: {e}")
             raise
 
         except Exception as e:
+            # Excepciones inesperadas - envolver en EliminacionOrdenError
             logger.error(f"Error al eliminar orden de compra {id_orden}: {e}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Error interno al eliminar la orden de compra: {str(e)}"
+            raise EliminacionOrdenError(
+                id_orden,
+                f"Error inesperado: {str(e)}"
             )
