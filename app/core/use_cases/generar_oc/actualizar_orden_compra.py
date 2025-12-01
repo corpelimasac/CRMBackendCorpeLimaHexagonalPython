@@ -330,9 +330,10 @@ class ActualizarOrdenCompra:
                 monto_anterior=monto_anterior,
                 monto_nuevo=monto_nuevo,
                 # Otros cambios
-                otros_cambios=otros_cambios if otros_cambios else None
+                otros_cambios=otros_cambios if otros_cambios else None,
+                numero_oc=numero_oc  # Guardar número de OC
             )
-            logger.info(f"Auditoría registrada para orden {numero_oc}{' (con registro de compra '+str(compra_id)+')' if compra_id else ''}")
+            logger.info(f"Auditoría de actualización registrada para orden {numero_oc}{' (con registro de compra '+str(compra_id)+')' if compra_id else ''}")
 
             # 6. Regenerar Excel usando los datos del request
             logger.info("Regenerando archivo Excel con datos actualizados...")

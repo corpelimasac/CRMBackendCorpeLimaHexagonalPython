@@ -143,7 +143,8 @@ class EliminarOrdenCompra:
                 id_proveedor=orden.id_proveedor,
                 id_contacto=orden.id_proveedor_contacto,
                 productos=productos_lista,
-                monto_total=monto_total
+                monto_total=monto_total,
+                numero_oc=orden.correlative  # Pasar el número de OC para la auditoría
             )
             logger.info(f"Auditoría de eliminación registrada para orden {orden.correlative}")
 

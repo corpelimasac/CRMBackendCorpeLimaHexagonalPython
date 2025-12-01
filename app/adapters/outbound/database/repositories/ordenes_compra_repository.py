@@ -380,9 +380,10 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     id_contacto=orden_bd.id_proveedor_contacto,
                     productos=productos,
                     monto_total=total_orden,
-                    otros_datos=otros_datos
+                    otros_datos=otros_datos,
+                    numero_oc=orden_bd.correlative  # Guardar número de OC
                 )
-                logger.debug(f"Auditoría registrada para orden {orden_bd.correlative}")
+                logger.debug(f"Auditoría de creación registrada para orden {orden_bd.correlative}")
 
             # Ahora sí, hacer commit de TODO (órdenes, detalles, auditorías)
             # Al hacer commit, el evento se disparará automáticamente
