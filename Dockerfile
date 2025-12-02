@@ -15,9 +15,8 @@ WORKDIR /app
 COPY requirements.in .
 COPY requirements.txt .
 
-# Generar un archivo temporal a partir de requirements.in
-# Se usa el mismo método que se usaría localmente para asegurar consistencia.
-RUN pip-compile requirements.in -o requirements.txt.tmp
+# Generar un archivo temporal SIN la cabecera de comentarios
+RUN pip-compile --no-header requirements.in -o requirements.txt.tmp
 
 # Comparar el archivo existente (requirements.txt) con el recién generado (requirements.txt.tmp).
 # Si son diferentes, el build fallará con un error claro.

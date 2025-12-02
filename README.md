@@ -275,6 +275,16 @@ pip install -r requirements.txt
 pip install -r requirements-dev.txt
 ```
 
+### 3.1. Actualizar dependencias
+```bash
+# Actualizar dependencias sin header (compatible con Dockerfile)
+pip-compile --upgrade --no-header
+
+# O especificando los archivos explícitamente
+pip-compile --no-header requirements.in -o requirements.txt --upgrade
+```
+**Nota**: El flag `--no-header` es importante para mantener consistencia con la verificación del Dockerfile.
+
 ### 4. Configurar variables de entorno
 ```bash
 cp .env.example .env
