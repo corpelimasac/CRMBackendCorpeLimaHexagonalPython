@@ -140,6 +140,9 @@ class AuditoriaOrdenCompra:
 
 @dataclass
 class ResultadoObtenerInfoOC:
+    def __init__(self):
+        self.id_proveedor_contacto = None
+
     """
     Resultado de la consulta obtener_info_oc.
 

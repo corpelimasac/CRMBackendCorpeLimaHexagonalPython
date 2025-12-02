@@ -12,10 +12,9 @@ from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.core.domain.dtos.orden_compra_dtos import (
     ObtenerInfoOCQuery,
-    DatosExcelOC,
     DatosOrdenExcel,
     DatosProveedorExcel,
-    DatosProductoExcel,
+    DatosProductoExcel, ResultadoObtenerInfoOC,
 )
 from app.shared.serializers.generator_oc.generador import Generador
 
@@ -47,7 +46,7 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
         excel_files = {}
 
         # Obtener información de la orden de compra (ahora retorna List[DatosExcelOC])
-        resultados: List[DatosExcelOC] = self.ordenes_compra_repo.obtener_info_oc(query)
+        resultados: List[ResultadoObtenerInfoOC] = self.ordenes_compra_repo.obtener_info_oc(query)
 
         print(f"Este es el resultado: {resultados}")
 
@@ -92,7 +91,7 @@ class OpenPyXLExcelGenerator(ExcelGeneratorPort):
             if todos_sin_igv:
                 # CASO 1: TODOS SIN IGV - No uniformizar, el Excel mostrará SUBTOTAL + IGV + TOTAL
                 igv = 'SIN IGV'
-                print(f"[EXCEL GENERATOR] TODOS SIN IGV - Excel mostrará desglose de IGV")
+                print(f"[EXCEL GENERATOR]  TODOS SIN IGV  - Excel mostrará  desglose de IGV")
                 for r in resultados_contacto:
                     datos_para_excel.append({
                         'CANT': r.cantidad,

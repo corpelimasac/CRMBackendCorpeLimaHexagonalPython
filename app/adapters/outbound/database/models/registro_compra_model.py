@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Numeric, String, BIGINT
+from sqlalchemy import Column, Date, Numeric, String, BIGINT, Boolean
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -54,6 +54,22 @@ class RegistroCompraModel(Base):
         String(20),
         nullable=True,
         comment="CORPELIMA o CONSORCIO"
+    )
+
+    # Estado del registro
+    activo = Column(
+        Boolean,
+        nullable=False,
+        server_default='1',
+        comment="Indica si el registro está activo (1) o inactivo (0)"
+    )
+
+    # Campo para desactivación manual
+    desactivado_manualmente = Column(
+        Boolean,
+        nullable=False,
+        server_default='0',
+        comment="Indica si el registro fue desactivado manualmente desde otro servicio"
     )
 
     # Relaciones
