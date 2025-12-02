@@ -99,7 +99,13 @@ class Generador:
         self.ws["C13"].alignment = Alignment(horizontal="left")
         self.ws["C14"] = datos.get("CORREO", "")
         self.ws["C15"] = datos.get("DIRECCION", "")
-        self.ws["G11"] = datos.get("FECHA", "")
+        
+        fecha = datos.get("FECHA")
+        if fecha:
+            self.ws["G11"] = fecha.strftime("%d/%m/%Y")
+        else:
+            self.ws["G11"] = ""
+
         self.ws["G11"].alignment = Alignment(horizontal="left")
         self.ws["G12"] = datos.get("MONEDA", "")
         self.moneda=datos.get("MONEDA", "SOLES")

@@ -247,7 +247,9 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                     tipo_cambio_sunat=datos_calculados['tipo_cambio_sunat'],
                     monto_total_soles=datos_calculados['monto_total_soles'],
                     monto_sin_igv=datos_calculados['monto_sin_igv'],
-                    tipo_empresa=datos_calculados['tipo_empresa']
+                    tipo_empresa=datos_calculados['tipo_empresa'],
+                    activo=True,
+                    desactivado_manualmente=False
                 )
                 self.db.add(registro)
                 self.db.flush()  # Obtener ID
