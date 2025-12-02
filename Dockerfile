@@ -1,10 +1,10 @@
 # ====================================================================
-# Dockerfile para FastAPI con Playwright (Versión con Verificación)
+# Dockerfile para FastAPI con Playwright (Versión con Verificación Robusta)
 # ====================================================================
 
 # --- ETAPA 1: Verificador de Dependencias ---
 # Esta etapa solo se usa para verificar que requirements.txt esté actualizado.
-FROM python:3.11-slim-bullseye AS verifier
+FROM python:3.13-slim-bullseye AS verifier
 
 # Instalar pip-tools
 RUN pip install pip-tools
@@ -15,17 +15,21 @@ WORKDIR /app
 COPY requirements.in .
 COPY requirements.txt .
 
-# Verificar si requirements.txt está sincronizado con requirements.in
-# Si no lo está, el comando 'diff' fallará y detendrá el build.
-RUN pip-compile --quiet requirements.in -o - | diff requirements.txt - || \
-    (echo "ERROR: requirements.txt está desactualizado." && \
-     echo "Por favor, ejecuta 'pip-compile --upgrade' y commitea los cambios." && \
+# Generar un archivo temporal a partir de requirements.in
+# Se usa el mismo método que se usaría localmente para asegurar consistencia.
+RUN pip-compile requirements.in -o requirements.txt.tmp
+
+# Comparar el archivo existente (requirements.txt) con el recién generado (requirements.txt.tmp).
+# Si son diferentes, el build fallará con un error claro.
+RUN diff requirements.txt requirements.txt.tmp || \
+    (echo "ERROR: requirements.txt está desactualizado o fue generado en un entorno incorrecto." && \
+     echo "Por favor, ejecuta el comando 'docker run...' para regenerarlo y commitea los cambios." && \
      exit 1)
 
 
 # --- ETAPA 2: Build Final de la Aplicación ---
 # Esta es la imagen final que se creará si la verificación pasa.
-FROM python:3.11-slim-bullseye
+FROM python:3.13-slim-bullseye
 
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1

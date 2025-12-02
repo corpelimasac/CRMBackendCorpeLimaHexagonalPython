@@ -1,30 +1,37 @@
-# FastAPI y servidor
-fastapi
-uvicorn[standard]
 
-# Base de datos - SQLAlchemy con MySQL
+fastapi
+uvicorn
+
+
+httptools
+websockets
+watchfiles
+
+uvloop; sys_platform != "win32"
+
+
 sqlalchemy
 mysql-connector-python
 pymysql
 aiomysql
 alembic
 
-# Validación y serialización
+
 pydantic[email]
 pydantic-settings
 
-# Configuración
+
 python-dotenv
 
-# Seguridad
+
 python-jose[cryptography]
 passlib[bcrypt]
 
-# Herramientas de desarrollo
+
 pytest
 pytest-asyncio
 
-# Otras dependencias útiles
+
 python-multipart
 requests
 beautifulsoup4
