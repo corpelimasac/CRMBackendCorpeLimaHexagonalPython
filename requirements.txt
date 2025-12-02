@@ -32,6 +32,10 @@ charset-normalizer==3.4.4
     #   requests
 click==8.3.1
     # via uvicorn
+colorama==0.4.6
+    # via
+    #   click
+    #   pytest
 cryptography==46.0.3
     # via python-jose
 dnspython==2.8.0
@@ -42,7 +46,7 @@ email-validator==2.3.0
     # via pydantic
 et-xmlfile==2.0.0
     # via openpyxl
-fastapi==0.123.4
+fastapi==0.123.5
     # via -r requirements.in
 greenlet==3.2.4
     # via
@@ -167,7 +171,9 @@ typing-inspection==0.4.2
     #   pydantic
     #   pydantic-settings
 tzdata==2025.2
-    # via pandas
+    # via
+    #   pandas
+    #   tzlocal
 tzlocal==5.3.1
     # via apscheduler
 urllib3==2.5.0
@@ -175,8 +181,6 @@ urllib3==2.5.0
     #   botocore
     #   requests
 uvicorn==0.38.0
-    # via -r requirements.in
-uvloop==0.22.1 ; sys_platform != "win32"
     # via -r requirements.in
 watchfiles==1.1.1
     # via -r requirements.in
