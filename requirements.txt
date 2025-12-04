@@ -16,9 +16,9 @@ bcrypt==5.0.0
     # via passlib
 beautifulsoup4==4.14.3
     # via -r requirements.in
-boto3==1.42.1
+boto3==1.42.2
     # via -r requirements.in
-botocore==1.42.1
+botocore==1.42.2
     # via
     #   boto3
     #   s3transfer
@@ -46,9 +46,9 @@ email-validator==2.3.0
     # via pydantic
 et-xmlfile==2.0.0
     # via openpyxl
-fastapi==0.123.5
+fastapi==0.123.8
     # via -r requirements.in
-greenlet==3.2.4
+greenlet==3.3.0
     # via
     #   playwright
     #   sqlalchemy
