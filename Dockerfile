@@ -1,39 +1,35 @@
 # ====================================================================
-# Dockerfile para FastAPI con Playwright (Versión con Verificación Robusta)
+# Dockerfile para FastAPI con Playwright (Versión con Generación Directa)
 # ====================================================================
 
-# --- ETAPA 1: Verificador de Dependencias ---
-# Esta etapa solo se usa para verificar que requirements.txt esté actualizado.
-FROM python:3.13-slim-bullseye AS verifier
+# --- ETAPA 1: Build de Dependencias ---
+# En esta etapa se generan los requerimientos y se instalan.
+FROM python:3.13-slim-bullseye AS builder
 
 # Instalar pip-tools
 RUN pip install pip-tools
 
 WORKDIR /app
 
-# Copiar solo los archivos de requerimientos
+# Copiar requirements.in y generar requirements.txt
 COPY requirements.in .
-COPY requirements.txt .
+RUN pip-compile --no-header requirements.in -o requirements.txt
 
-# Generar un archivo temporal SIN la cabecera de comentarios
-RUN pip-compile --no-header requirements.in -o requirements.txt.tmp
-
-# Comparar el archivo existente (requirements.txt) con el recién generado (requirements.txt.tmp).
-# Si son diferentes, el build fallará con un error claro.
-RUN diff requirements.txt requirements.txt.tmp || \
-    (echo "ERROR: requirements.txt está desactualizado o fue generado en un entorno incorrecto." && \
-     echo "Por favor, ejecuta el comando 'docker run...' para regenerarlo y commitea los cambios." && \
-     exit 1)
+# Instalar dependencias de Python en un venv
+RUN python -m venv /opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+RUN pip install --no-cache-dir -r requirements.txt
 
 
 # --- ETAPA 2: Build Final de la Aplicación ---
-# Esta es la imagen final que se creará si la verificación pasa.
+# Esta es la imagen final que se creará.
 FROM python:3.13-slim-bullseye
 
 # Variables de entorno
 ENV PYTHONUNBUFFERED=1
 ENV PIP_NO_CACHE_DIR=off
 ENV PLAYWRIGHT_BROWSERS_PATH=/usr/bin/ms-playwright
+ENV PATH="/opt/venv/bin:$PATH"
 
 WORKDIR /app
 
@@ -46,12 +42,9 @@ RUN apt-get update && apt-get install -y \
     --no-install-recommends && \
     rm -rf /var/lib/apt/lists/*
 
-# Copiar el requirements.txt verificado desde la etapa anterior
-COPY --from=verifier /app/requirements.txt .
-
-# Instalar dependencias de Python
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt
+# Copiar el venv con las dependencias instaladas desde la etapa anterior
+COPY --from=builder /opt/venv /opt/venv
+COPY --from=builder /app/requirements.txt .
 
 # Instalar los navegadores de Playwright
 RUN playwright install --with-deps
