@@ -15,7 +15,7 @@ class DolarSchedulerService:
 
     Este servicio ejecuta un scraping del sitio web de Securex para obtener
     el valor del dólar y lo guarda en la base de datos automáticamente
-    todos los días a las 10:00 AM hora Perú (America/Lima).
+    todos los días a las 8:30 AM hora Perú (America/Lima).
     """
 
     def __init__(self):
@@ -73,10 +73,10 @@ class DolarSchedulerService:
     def start(self):
         """
         Inicia el scheduler con la tarea programada.
-        Configura la ejecución diaria a las 10:00 AM hora Perú.
+        Configura la ejecución diaria a las 8:30 AM hora Perú.
         """
         try:
-            # Programar la tarea para ejecutarse todos los días a las 10:00 AM hora Perú
+            # Programar la tarea para ejecutarse todos los días a las 8:30 AM hora Perú
             self.scheduler.add_job(
                 func=self.actualizar_valor_dolar,
                 trigger=CronTrigger(hour=8, minute=30, timezone=self.peru_tz),
@@ -89,7 +89,7 @@ class DolarSchedulerService:
             self.scheduler.start()
 
             logger.info("✅ Scheduler del dólar iniciado correctamente")
-            logger.info("📅 Programado para ejecutarse todos los días a las 10:00 AM (hora Perú)")
+            logger.info("📅 Programado para ejecutarse todos los días a las 8:30 AM (hora Perú)")
             print("✅ Scheduler del dólar iniciado correctamente")
             print("📅 Programado para ejecutarse todos los días a las 8:30 AM (hora Perú)")
 
