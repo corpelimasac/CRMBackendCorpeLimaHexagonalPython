@@ -91,7 +91,7 @@ class DolarSchedulerService:
             logger.info("✅ Scheduler del dólar iniciado correctamente")
             logger.info("📅 Programado para ejecutarse todos los días a las 10:00 AM (hora Perú)")
             print("✅ Scheduler del dólar iniciado correctamente")
-            print("📅 Programado para ejecutarse todos los días a las 10:00 AM (hora Perú)")
+            print("📅 Programado para ejecutarse todos los días a las 8:30 AM (hora Perú)")
 
         except Exception as e:
             logger.error(f"❌ Error al iniciar el scheduler: {e}", exc_info=True)
