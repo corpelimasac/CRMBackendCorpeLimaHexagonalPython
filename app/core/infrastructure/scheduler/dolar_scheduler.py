@@ -79,7 +79,7 @@ class DolarSchedulerService:
             # Programar la tarea para ejecutarse todos los días a las 10:00 AM hora Perú
             self.scheduler.add_job(
                 func=self.actualizar_valor_dolar,
-                trigger=CronTrigger(hour=10, minute=0, timezone=self.peru_tz),
+                trigger=CronTrigger(hour=8, minute=30, timezone=self.peru_tz),
                 id='actualizar_dolar_diario',
                 name='Actualización diaria del valor del dólar',
                 replace_existing=True
