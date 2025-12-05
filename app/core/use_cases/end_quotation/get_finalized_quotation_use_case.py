@@ -99,7 +99,7 @@ class GetFinalizedQuotationUseCase:
                 for producto in productos:
                     producto_dto = ProductoDTO(
                         id=producto.id_producto,
-                        cant=producto.cantidad,
+                        cant=float(producto.cantidad),
                         und=producto.unidad_medida,
                         nombre=producto.producto,
                         marca=producto.marca or "N/A",

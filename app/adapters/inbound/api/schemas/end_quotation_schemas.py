@@ -21,7 +21,7 @@ class ProveedorInfoDTO(BaseModel):
 class ProductoDTO(BaseModel):
     """DTO para un único producto en la lista."""
     id: int = Field(..., description="ID del producto")
-    cant: int = Field(..., description="Cantidad del producto")
+    cant: float = Field(..., description="Cantidad del producto")
     und: str = Field(..., description="Unidad de medida")
     nombre: str = Field(..., description="Nombre del producto")
     marca: str = Field(..., description="Marca del producto")
