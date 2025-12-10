@@ -1,6 +1,7 @@
 import logging
 from datetime import datetime
 from typing import Optional
+from decimal import Decimal
 from sqlalchemy.orm import Session
 from app.core.ports.repositories.ordenes_compra_repository import OrdenesCompraRepositoryPort
 from app.core.ports.services.generator_excel_port import ExcelGeneratorPort
@@ -13,6 +14,11 @@ from app.core.domain.exceptions import (
     ActualizacionOrdenError,
     GeneracionExcelError,
     AlmacenamientoError,
+)
+from app.core.domain.dtos.orden_compra_dtos import (
+    DatosOrdenExcel,
+    DatosProveedorExcel,
+    DatosProductoExcel,
 )
 from app.config.settings import get_settings
 
@@ -339,35 +345,34 @@ class ActualizarOrdenCompra:
             logger.info("Regenerando archivo Excel con datos actualizados...")
 
             # Preparar datos de la orden (usar fecha actual para el Excel)
-            fecha_actual = datetime.now().date()
-            orden_data = {
-                'moneda': request.moneda if request.moneda else '',
-                'pago': request.pago if request.pago else '',
-                'entrega': request.entrega if request.entrega else '',
-                'fecha': str(fecha_actual)
-            }
+            fecha_actual = datetime.now()
+            orden_data = DatosOrdenExcel(
+                fecha=fecha_actual,
+                moneda=request.moneda if request.moneda else '',
+                pago=request.pago if request.pago else '',
+                entrega=request.entrega if request.entrega else ''
+            )
 
             # Preparar datos del proveedor (viene del request)
-            proveedor_data = {
-                'razonSocial': request.proveedor.razonSocial,
-                'direccion': request.proveedor.direccion,
-                'nombreContacto': request.proveedor.nombreContacto,
-                'telefono': request.proveedor.telefono,
-                'celular': request.proveedor.celular,
-                'correo': request.proveedor.correo
-            }
+            proveedor_data = DatosProveedorExcel(
+                razon_social=request.proveedor.razonSocial,
+                direccion=request.proveedor.direccion,
+                nombre_contacto=request.proveedor.nombreContacto,
+                celular=request.proveedor.celular,
+                correo=request.proveedor.correo
+            )
 
             # Preparar datos de productos (solo los NO eliminados, con datos completos del request)
             productos_data = [
-                {
-                    'cantidad': p.cantidad,
-                    'unidadMedida': p.unidadMedida,
-                    'producto': p.producto,
-                    'marca': p.marca,
-                    'modelo': p.modelo or '',
-                    'precioUnitario': p.pUnitario,
-                    'igv': p.igv
-                }
+                DatosProductoExcel(
+                    cantidad=p.cantidad,
+                    unidad_medida=p.unidadMedida,
+                    producto=p.producto,
+                    marca=p.marca,
+                    modelo=p.modelo or '',
+                    precio_unitario=Decimal(str(p.pUnitario)),
+                    igv=p.igv
+                )
                 for p in request.productos if not p.eliminar
             ]
 
