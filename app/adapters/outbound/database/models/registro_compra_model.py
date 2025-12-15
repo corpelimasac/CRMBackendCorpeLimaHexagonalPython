@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Date, Numeric, String, BIGINT, Boolean
+from sqlalchemy import Column, Date, DateTime, Numeric, String, BIGINT, Boolean
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -19,6 +19,10 @@ class RegistroCompraModel(Base):
 
     # Fecha de cambio - campo opcional para tracking de cambios
     fecha_cambio = Column(Date, nullable=True, comment="Fecha del último cambio en el registro")
+
+    # Campos de auditoría temporal
+    fecha_creacion = Column(DateTime, nullable=True, comment="Fecha y hora de creación del registro")
+    fecha_actualizacion = Column(DateTime, nullable=True, comment="Fecha y hora de la última actualización del registro")
 
     # Moneda
     moneda = Column(

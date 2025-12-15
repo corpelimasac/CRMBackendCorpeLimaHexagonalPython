@@ -230,6 +230,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.tipo_empresa = datos_calculados['tipo_empresa']
                 # Actualizar fecha de cambio
                 registro.fecha_cambio = datetime.now().date()
+                # Actualizar fecha de actualización
+                registro.fecha_actualizacion = datetime.now()
 
                 # Eliminar detalles anteriores de registro_compra_ordenes
                 self.db.query(RegistroCompraOrdenModel).filter(
@@ -249,7 +251,8 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                     monto_sin_igv=datos_calculados['monto_sin_igv'],
                     tipo_empresa=datos_calculados['tipo_empresa'],
                     activo=True,
-                    desactivado_manualmente=False
+                    desactivado_manualmente=False,
+                    fecha_creacion=datetime.now()
                 )
                 self.db.add(registro)
                 self.db.flush()  # Obtener ID
