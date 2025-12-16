@@ -94,6 +94,8 @@ class ProductosCotizacionesRepository(ProductosCotizacionesRepositoryPort):
                 )
                 .where(CotizacionesVersionesModel.id_cotizacion == id_cotizacion)
                 .where(CotizacionesVersionesModel.id_cotizacion_versiones == id_cotizacion_version)
+                # Filtrar solo productos activados (estado = True)
+                .where(ProductosCotizacionesModel.estado == True)
                 # Filtrar solo productos SIN OC activa
                 .where(OrdenesCompraModel.id_orden == None)
             )
