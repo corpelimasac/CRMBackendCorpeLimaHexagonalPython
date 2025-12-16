@@ -14,6 +14,9 @@ from app.adapters.outbound.database.models.ordenes_compra_model import (
     OrdenesCompraModel,
 )
 from app.adapters.outbound.database.models.productos_model import ProductosModel
+from app.adapters.outbound.database.models.productos_cotizaciones_model import (
+    ProductosCotizacionesModel,
+)
 from app.adapters.outbound.database.models.proveedor_contacto_model import (
     ProveedorContactosModel,
 )
@@ -468,6 +471,11 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     OrdenesCompraModel.id_orden == OrdenesCompraDetallesModel.id_orden,
                 )
                 .join(
+                    ProductosCotizacionesModel,
+                    OrdenesCompraDetallesModel.id_producto_cotizacion
+                    == ProductosCotizacionesModel.id_producto_cotizacion,
+                )
+                .join(
                     ProductosModel,
                     OrdenesCompraDetallesModel.id_producto
                     == ProductosModel.id_producto,
@@ -497,6 +505,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                     OrdenesCompraModel.id_proveedor_contacto.in_(
                         query.id_contacto_proveedor
                     ),
+                    ProductosCotizacionesModel.estado == True,  # Filtrar solo productos activados
                 )
                 .order_by(OrdenesCompraModel.id_orden.desc())
             )
