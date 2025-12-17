@@ -226,10 +226,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.tipo_cambio_sunat = datos_calculados['tipo_cambio_sunat']
                 registro.monto_total_soles = datos_calculados['monto_total_soles']
                 registro.monto_sin_igv = datos_calculados['monto_sin_igv']
-                registro.fecha_orden_compra = datos_calculados['fecha_orden_compra']
                 registro.tipo_empresa = datos_calculados['tipo_empresa']
-                # Actualizar fecha de cambio
-                registro.fecha_cambio = datetime.now().date()
                 # Actualizar fecha de actualización
                 registro.fecha_actualizacion = datetime.now()
 
@@ -243,7 +240,6 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
                 # Crear nuevo registro
                 registro = RegistroCompraModel(
-                    fecha_orden_compra=datos_calculados['fecha_orden_compra'],
                     moneda=datos_calculados['moneda'],
                     monto_total_dolar=datos_calculados['monto_total_dolar'],
                     tipo_cambio_sunat=datos_calculados['tipo_cambio_sunat'],
@@ -378,7 +374,6 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             # Guardar datos completos para auditoría
             datos_anteriores = {
                 'compra_id': compra_id,
-                'fecha_orden_compra': str(registro.fecha_orden_compra) if registro.fecha_orden_compra else None,
                 'moneda': registro.moneda,
                 'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
                 'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
@@ -470,7 +465,6 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             # Guardar datos completos para auditoría
             datos_anteriores = {
                 'compra_id': compra_id,
-                'fecha_orden_compra': str(registro.fecha_orden_compra) if registro.fecha_orden_compra else None,
                 'moneda': registro.moneda,
                 'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
                 'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,

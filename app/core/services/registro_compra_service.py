@@ -46,7 +46,6 @@ class RegistroCompraService:
                 'tipo_cambio_sunat': Decimal,
                 'monto_total_soles': Decimal,
                 'monto_sin_igv': Decimal,
-                'fecha_orden_compra': date,
                 'tipo_empresa': str
             }
 
@@ -117,16 +116,12 @@ class RegistroCompraService:
         
         logger.info(f"Tipo de empresa determinado: {tipo_empresa} (consorcio={tiene_consorcio})")
 
-        # Fecha del registro (fecha actual cuando se genera el registro)
-        fecha_orden_compra = date.today()
-
         resultado = {
             'moneda': moneda,
             'monto_total_dolar': monto_total_dolar,
             'tipo_cambio_sunat': tipo_cambio_sunat,
             'monto_total_soles': monto_total_soles,
             'monto_sin_igv': monto_sin_igv,
-            'fecha_orden_compra': fecha_orden_compra,
             'tipo_empresa': tipo_empresa
         }
 
