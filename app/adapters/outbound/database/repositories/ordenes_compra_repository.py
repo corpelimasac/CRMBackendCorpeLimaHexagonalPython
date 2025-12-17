@@ -632,7 +632,7 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
     def eliminar_orden(self, id_orden: int) -> bool:
         """
         Elimina una orden de compra y todos sus registros asociados.
-        Si la orden es la última de un registro de compra, elimina el registro completo.
+        Si la orden es la última de un registro de compra, marca el registro como inactivo.
 
         Args:
             id_orden (int): ID de la orden de compra
@@ -703,9 +703,9 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 ).count()
 
                 if ordenes_restantes == 0:
-                    logger.info(f"La orden {id_orden} era la última en el registro de compra {compra_id}. Eliminando el registro.")
+                    logger.info(f"La orden {id_orden} era la última en el registro de compra {compra_id}. Desactivando el registro.")
                     registro_repo = RegistroCompraRepository(self.db)
-                    registro_repo.eliminar_registro(compra_id)
+                    registro_repo.desactivar_registro(compra_id)
                 else:
                     logger.info(f"Quedan {ordenes_restantes} órdenes en el registro {compra_id}. Se recalculará.")
                     # En lugar de un evento, llamamos directamente al caso de uso para mantener la atomicidad

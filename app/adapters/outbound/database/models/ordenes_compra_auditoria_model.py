@@ -26,8 +26,8 @@ class OrdenesCompraAuditoriaModel(Base):
 
     # Referencias principales
     # Se permite NULL en id_orden_compra para mantener el historial cuando se elimina una orden
-    id_orden_compra = Column(BIGINT, ForeignKey("ordenes_compra.id_orden", ondelete="SET NULL"),
-                            nullable=True, index=True,
+    # NO tiene FK para permitir eliminación sin restricciones (auditoría histórica)
+    id_orden_compra = Column(BIGINT, nullable=True, index=True,
                             comment="ID de la orden de compra (NULL si fue eliminada)")
 
     # Número correlativo de la OC (se guarda directamente para mantener historial)
@@ -74,8 +74,8 @@ class OrdenesCompraAuditoriaModel(Base):
                         comment="Descripción legible del cambio")
 
     # Relaciones (para obtener datos mediante JOIN)
-    orden_compra = relationship("OrdenesCompraModel", foreign_keys=[id_orden_compra],
-                               backref="auditorias")
+    # NOTA: No hay relación con OrdenesCompraModel porque no hay FK
+    # Los JOINs se hacen explícitamente en los queries con outerjoin()
     usuario = relationship("UsuariosModel", foreign_keys=[id_usuario],
                           backref="auditorias_ordenes_compra")
     cotizacion = relationship("CotizacionModel", foreign_keys=[id_cotizacion],

@@ -160,6 +160,69 @@ class RegistroCompraAuditoriaService:
             # Re-lanzar la excepción para que el repositorio haga rollback de toda la transacción
             raise
 
+    def registrar_desactivacion_registro(
+        self,
+        compra_id: int,
+        id_cotizacion: int,
+        id_cotizacion_versiones: int,
+        datos_anteriores: Dict[str, Any],
+        ordenes: List[OrdenesCompraModel],
+        razon: str,
+        id_usuario: Optional[int] = None
+    ) -> None:
+        """
+        Registra la desactivación de un registro de compra.
+
+        IMPORTANTE: Este método NO hace commit. El commit debe ser manejado
+        por el repositorio que lo llama para mantener integridad transaccional.
+
+        Args:
+            compra_id: ID del registro desactivado
+            id_cotizacion: ID de la cotización
+            id_cotizacion_versiones: ID de la versión
+            datos_anteriores: Datos antes de desactivar (dict completo con toda la info)
+            ordenes: Órdenes que tenía el registro
+            razon: Razón de la desactivación
+            id_usuario: ID del usuario (opcional)
+        """
+        try:
+            monto_anterior = float(datos_anteriores.get('monto_total_soles', 0))
+            cantidad_ordenes = len(ordenes)
+
+            descripcion = (
+                f"Registro de compra {compra_id} marcado como inactivo. "
+                f"Total del registro: S/ {monto_anterior:,.2f}. "
+                f"Cantidad de órdenes asociadas: {cantidad_ordenes}. "
+                f"Razón: {razon}"
+            )
+
+            auditoria = RegistroCompraAuditoriaModel(
+                fecha_evento=datetime.now(),
+                tipo_operacion="DESACTIVACION",
+                tipo_entidad="REGISTRO_COMPRA",
+                id_cotizacion=id_cotizacion,
+                id_cotizacion_versiones=id_cotizacion_versiones,
+                id_usuario=id_usuario,
+                datos_anteriores=json.dumps(datos_anteriores, default=str),
+                monto_anterior=monto_anterior,
+                descripcion=descripcion,
+                razon=razon,
+                metadata_json=json.dumps({
+                    'cantidad_ordenes': cantidad_ordenes,
+                    'ordenes_ids': [o.id_orden for o in ordenes],
+                    'accion': 'desactivacion'
+                })
+            )
+
+            self.db.add(auditoria)
+            # NO hacer commit aquí - dejar que el repositorio haga commit de toda la transacción
+            logger.info(f"Auditoria registrada (pendiente commit): Desactivacion de registro {compra_id}")
+
+        except Exception as e:
+            logger.error(f"Error al registrar auditoria de desactivacion de registro: {e}", exc_info=True)
+            # Re-lanzar la excepción para que el repositorio haga rollback de toda la transacción
+            raise
+
     def registrar_eliminacion_registro(
         self,
         compra_id: int,

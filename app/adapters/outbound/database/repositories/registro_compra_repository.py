@@ -332,10 +332,103 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al eliminar orden de registro: {e}")
             raise
 
+    def desactivar_registro(self, compra_id: int):
+        """
+        Desactiva un registro de compra cuando no quedan órdenes asociadas.
+        Marca el campo 'activo' como False en lugar de eliminar el registro.
+        Registra auditoría con todos los datos del registro.
+
+        Args:
+            compra_id: ID del registro de compra
+        """
+        from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
+
+        try:
+            # Obtener datos del registro
+            registro = self.db.query(RegistroCompraModel).filter(
+                RegistroCompraModel.compra_id == compra_id
+            ).first()
+
+            if not registro:
+                logger.warning(f"Registro de compra {compra_id} no encontrado")
+                return
+
+            # Obtener órdenes asociadas a través de registro_compra_ordenes
+            ordenes_detalle = self.db.query(RegistroCompraOrdenModel).filter(
+                RegistroCompraOrdenModel.compra_id == compra_id
+            ).all()
+
+            # Si hay órdenes asociadas, obtenerlas para la auditoría
+            ordenes = []
+            id_cotizacion = None
+            id_cotizacion_versiones = None
+
+            if ordenes_detalle:
+                ordenes_ids = [o.id_orden for o in ordenes_detalle]
+                if ordenes_ids:
+                    ordenes = self.db.query(OrdenesCompraModel).filter(
+                        OrdenesCompraModel.id_orden.in_(ordenes_ids)
+                    ).all()
+
+                # Obtener cotización desde la primera orden
+                if ordenes:
+                    id_cotizacion = ordenes[0].id_cotizacion
+                    id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones
+
+            # Guardar datos completos para auditoría
+            datos_anteriores = {
+                'compra_id': compra_id,
+                'fecha_orden_compra': str(registro.fecha_orden_compra) if registro.fecha_orden_compra else None,
+                'moneda': registro.moneda,
+                'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
+                'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
+                'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
+                'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
+                'tipo_empresa': registro.tipo_empresa,
+                'cantidad_ordenes': len(ordenes),
+                'ordenes': [
+                    {
+                        'id_orden': o.id_orden,
+                        'numero_oc': o.correlative,
+                        'monto': float(o.total) if o.total else 0,
+                        'moneda': o.moneda
+                    }
+                    for o in ordenes
+                ]
+            }
+
+            # 1. Registrar auditoría ANTES de desactivar (dentro de la misma transacción)
+            auditoria_service = RegistroCompraAuditoriaService(self.db)
+            auditoria_service.registrar_desactivacion_registro(
+                compra_id=compra_id,
+                id_cotizacion=int(id_cotizacion) if id_cotizacion else None,
+                id_cotizacion_versiones=int(id_cotizacion_versiones) if id_cotizacion_versiones else None,
+                datos_anteriores=datos_anteriores,
+                ordenes=ordenes,
+                razon="No quedan órdenes de compra asociadas - Desactivación automática al eliminar última orden"
+            )
+
+            # 2. Marcar el registro como inactivo
+            registro.activo = False
+            registro.fecha_actualizacion = datetime.now()
+
+            # 3. Commit de toda la transacción (desactivación + auditoría)
+            # NOTA: NO se eliminan los detalles de registro_compra_ordenes para mantener el historial
+            self.db.commit()
+            logger.info(f"✅ Registro de compra {compra_id} marcado como inactivo y auditoría registrada")
+
+        except Exception as e:
+            self.db.rollback()
+            logger.error(f"Error al desactivar registro de compra {compra_id}: {e}", exc_info=True)
+            raise
+
     def eliminar_registro(self, compra_id: int):
         """
         Elimina un registro de compra completo cuando no quedan órdenes asociadas.
         Registra auditoría con todos los datos del registro y órdenes antes de eliminar.
+
+        NOTA: Este método ya NO se usa en el flujo normal de eliminación de órdenes.
+        Se mantiene solo para casos especiales donde se requiera eliminación física.
 
         Args:
             compra_id: ID del registro de compra
