@@ -22,18 +22,21 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
     def obtener_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> Optional[RegistroCompraModel]:
         """
-        Obtiene el registro de compra asociado a una cotización y versión
+        Obtiene el registro de compra ACTIVO asociado a una cotización y versión
         usando join con ordenes_compra
+
+        VALIDACIÓN DEFENSIVA: Detecta si existen múltiples registros activos para la misma
+        cotización versión (estado inconsistente) y logea un warning.
 
         Args:
             id_cotizacion: ID de la cotización
             id_cotizacion_versiones: ID de la versión de la cotización (opcional para compatibilidad)
 
         Returns:
-            RegistroCompraModel: Registro encontrado o None
+            RegistroCompraModel: Registro ACTIVO encontrado o None
         """
         try:
-            # Obtener registro via join con registro_compra_ordenes -> ordenes_compra
+            # Obtener TODOS los registros via join con registro_compra_ordenes -> ordenes_compra
             query = self.db.query(RegistroCompraModel).join(
                 RegistroCompraOrdenModel,
                 RegistroCompraModel.compra_id == RegistroCompraOrdenModel.compra_id
@@ -50,16 +53,40 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                     OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
                 )
 
-            registro = query.first()
+            # Obtener TODOS los registros (sin filtrar por activo aún)
+            registros_todos = query.distinct().all()
 
-            if registro:
-                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
-                logger.info(f"Registro de compra encontrado para cotización {id_cotizacion}{version_info}")
+            # Filtrar por registros ACTIVOS (activo=True AND desactivado_manualmente=False)
+            registros_activos = [
+                r for r in registros_todos
+                if r.activo and not r.desactivado_manualmente
+            ]
+
+            version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+
+            # VALIDACIÓN DEFENSIVA: Detectar estado inconsistente (múltiples registros activos)
+            if len(registros_activos) > 1:
+                compra_ids = [r.compra_id for r in registros_activos]
+                logger.warning(
+                    f"⚠️ ESTADO INCONSISTENTE: Existen {len(registros_activos)} registros de compra ACTIVOS "
+                    f"para cotización {id_cotizacion}{version_info}. "
+                    f"Solo debería existir máximo 1. IDs: {compra_ids}"
+                )
+                # Usar el más reciente (último creado)
+                registro = max(registros_activos, key=lambda r: r.compra_id)
+                logger.info(f"Usando el registro más reciente: compra_id={registro.compra_id}")
+                return registro
+
+            elif len(registros_activos) == 1:
+                # CASO NORMAL: Existe exactamente 1 registro activo
+                registro = registros_activos[0]
+                logger.info(f"✅ Registro de compra ACTIVO encontrado para cotización {id_cotizacion}{version_info}: compra_id={registro.compra_id}")
+                return registro
+
             else:
-                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
-                logger.info(f"No existe registro de compra para cotización {id_cotizacion}{version_info}")
-
-            return registro
+                # No existe registro activo
+                logger.info(f"No existe registro de compra ACTIVO para cotización {id_cotizacion}{version_info}")
+                return None
 
         except Exception as e:
             logger.error(f"Error al obtener registro de compra: {e}")
