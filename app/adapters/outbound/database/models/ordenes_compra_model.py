@@ -41,9 +41,10 @@ class OrdenesCompraModel(Base):
   # Relación de uno a uno con la tabla de proveedores contactos
   id_proveedor_contacto = Column(BIGINT, ForeignKey("proveedor_contactos.id_proveedor_contacto"), nullable=False)
 
-  # Relación one-to-one con registro_compra_ordenes (la FK está en la otra tabla)
-  registro_compra_orden = relationship(
+  # Relación one-to-many con registro_compra_ordenes (la FK está en la otra tabla)
+  # Una orden puede tener múltiples registros (uno activo, otros desactivados)
+  registro_compra_ordenes = relationship(
       "RegistroCompraOrdenModel",
       back_populates="orden_compra",
-      uselist=False
+      lazy="select"
   )

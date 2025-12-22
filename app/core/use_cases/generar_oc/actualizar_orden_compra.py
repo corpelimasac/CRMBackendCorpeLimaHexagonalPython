@@ -116,7 +116,15 @@ class ActualizarOrdenCompra:
             id_cotizacion_versiones = orden.id_cotizacion_versiones
             id_usuario = orden.id_usuario
             # Acceder a la relación sin query adicional (ya está cargada con joinedload)
-            compra_id = orden.registro_compra_orden.compra_id if orden.registro_compra_orden else None
+            # Ahora es una lista, obtener el registro activo si existe
+            compra_id = None
+            if orden.registro_compra_ordenes:
+                # Buscar el registro activo (no desactivado manualmente)
+                for registro in orden.registro_compra_ordenes:
+                    if hasattr(registro, 'registro_compra') and registro.registro_compra:
+                        if not registro.registro_compra.desactivado_manualmente:
+                            compra_id = registro.compra_id
+                            break
 
             # Guardar datos anteriores para auditoría
             id_proveedor_anterior = orden.id_proveedor

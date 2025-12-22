@@ -614,9 +614,9 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
                 OrdenesCompraModel.id_orden == id_orden
             )
 
-            # Usar eager loading para cargar registro_compra_orden en un solo query
+            # Usar eager loading para cargar registro_compra_ordenes en un solo query
             if with_registro:
-                query = query.options(joinedload(OrdenesCompraModel.registro_compra_orden))
+                query = query.options(joinedload(OrdenesCompraModel.registro_compra_ordenes))
 
             orden = query.first()
 

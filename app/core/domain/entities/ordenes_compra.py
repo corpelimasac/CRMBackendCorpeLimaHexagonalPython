@@ -25,8 +25,8 @@ class OrdenesCompra:
     entrega: str
     consorcio: bool
     items: List[OrdenesCompraItem]
-    registro_compra_orden: object = None
+    registro_compra_ordenes: List[object] = None
 
     def __post_init__(self):
-        if self.registro_compra_orden is None:
-            self.registro_compra_orden = None
+        if self.registro_compra_ordenes is None:
+            self.registro_compra_ordenes = []

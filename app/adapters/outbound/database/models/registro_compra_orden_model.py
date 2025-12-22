@@ -22,12 +22,12 @@ class RegistroCompraOrdenModel(Base):
         index=True
     )
 
-    # Relación One-to-One con orden de compra
+    # Relación Many-to-One con orden de compra
+    # Una orden puede estar en múltiples registros (uno activo, otros desactivados)
     id_orden = Column(
         Integer,
         ForeignKey("ordenes_compra.id_orden", ondelete="CASCADE"),
         nullable=False,
-        unique=True,
         index=True
     )
 
@@ -42,8 +42,9 @@ class RegistroCompraOrdenModel(Base):
         back_populates="registro_compra_ordenes"
     )
 
-    # Relación One-to-One con orden de compra
+    # Relación Many-to-One con orden de compra
+    # Múltiples RegistroCompraOrden pueden apuntar a la misma OrdenCompra
     orden_compra = relationship(
         "OrdenesCompraModel",
-        back_populates="registro_compra_orden"
+        back_populates="registro_compra_ordenes"
     )
