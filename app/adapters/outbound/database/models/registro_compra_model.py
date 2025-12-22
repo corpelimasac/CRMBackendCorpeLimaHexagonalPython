@@ -18,6 +18,14 @@ class RegistroCompraModel(Base):
     fecha_creacion = Column(DateTime, nullable=False, comment="Fecha y hora de creación del registro", index=True)
     fecha_actualizacion = Column(DateTime, nullable=True, comment="Fecha y hora de la última actualización del registro")
 
+    # Campo para marcar si el registro de compra ha sido modificado
+    cambio_compra = Column(
+        Boolean,
+        nullable=False,
+        server_default='0',
+        comment="Indica si el registro de compra ha sido modificado (1) o no (0)"
+    )
+
     # Moneda
     moneda = Column(
         String(10),

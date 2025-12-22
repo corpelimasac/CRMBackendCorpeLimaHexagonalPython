@@ -202,7 +202,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 es_actualizacion = True
                 logger.info(f"Actualizando registro de compra existente para cotización {id_cotizacion}")
 
-                # Guardar datos anteriores para auditoría
+                # Guardar datos anteriores para auditoría y detección de cambios
                 datos_anteriores = {
                     'moneda': registro.moneda,
                     'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
@@ -229,6 +229,14 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.tipo_empresa = datos_calculados['tipo_empresa']
                 # Actualizar fecha de actualización
                 registro.fecha_actualizacion = datetime.now()
+
+                # Detectar cambios comparando valores anteriores con nuevos
+                hay_cambios = self._detectar_cambios_compra(datos_anteriores, datos_calculados)
+                if hay_cambios:
+                    registro.cambio_compra = True
+                    logger.info("✅ Se detectaron cambios en el registro de compra - cambio_compra=True")
+                else:
+                    logger.info("No se detectaron cambios en el registro de compra")
 
                 # Eliminar detalles anteriores de registro_compra_ordenes
                 self.db.query(RegistroCompraOrdenModel).filter(
@@ -513,3 +521,30 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             self.db.rollback()
             logger.error(f"Error al eliminar registro de compra {compra_id}: {e}", exc_info=True)
             raise
+
+    def _detectar_cambios_compra(self, datos_anteriores: dict, datos_nuevos: dict) -> bool:
+        """
+        Detecta si hubo cambios en los campos relevantes del registro de compra
+
+        Args:
+            datos_anteriores: Diccionario con datos anteriores
+            datos_nuevos: Diccionario con datos nuevos
+
+        Returns:
+            bool: True si hubo cambios, False si no
+        """
+        cambio_moneda = datos_anteriores.get('moneda') != datos_nuevos.get('moneda')
+        cambio_monto_dolar = datos_anteriores.get('monto_total_dolar') != datos_nuevos.get('monto_total_dolar')
+        cambio_monto_soles = datos_anteriores.get('monto_total_soles') != datos_nuevos.get('monto_total_soles')
+        cambio_monto_sin_igv = datos_anteriores.get('monto_sin_igv') != datos_nuevos.get('monto_sin_igv')
+
+        if cambio_moneda:
+            logger.info(f"Cambio detectado - Moneda: {datos_anteriores.get('moneda')} → {datos_nuevos.get('moneda')}")
+        if cambio_monto_dolar:
+            logger.info(f"Cambio detectado - Monto Dólar: {datos_anteriores.get('monto_total_dolar')} → {datos_nuevos.get('monto_total_dolar')}")
+        if cambio_monto_soles:
+            logger.info(f"Cambio detectado - Monto Soles: {datos_anteriores.get('monto_total_soles')} → {datos_nuevos.get('monto_total_soles')}")
+        if cambio_monto_sin_igv:
+            logger.info(f"Cambio detectado - Monto Sin IGV: {datos_anteriores.get('monto_sin_igv')} → {datos_nuevos.get('monto_sin_igv')}")
+
+        return cambio_moneda or cambio_monto_dolar or cambio_monto_soles or cambio_monto_sin_igv
