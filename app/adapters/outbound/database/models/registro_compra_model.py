@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Numeric, String, BIGINT, Boolean
+from sqlalchemy import Column, DateTime, Numeric, String, BIGINT, Boolean, ForeignKey
 from sqlalchemy.orm import relationship
 from .base import Base
 
@@ -13,6 +13,15 @@ class RegistroCompraModel(Base):
     __tablename__ = "registro_compras"
 
     compra_id = Column(BIGINT, primary_key=True, index=True, autoincrement=True)
+
+    # Relación con cotización versión
+    cotizacion_version_id = Column(
+        BIGINT,
+        ForeignKey('cotizaciones_versiones.id_cotizacion_versiones'),
+        nullable=True,
+        index=True,
+        comment="FK a la versión de cotización asociada"
+    )
 
     # Campos de auditoría temporal
     fecha_creacion = Column(DateTime, nullable=False, comment="Fecha y hora de creación del registro", index=True)

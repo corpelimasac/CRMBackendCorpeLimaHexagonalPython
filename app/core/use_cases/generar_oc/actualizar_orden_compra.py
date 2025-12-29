@@ -247,10 +247,11 @@ class ActualizarOrdenCompra:
                        f"{productos_actualizados} actualizados, {productos_creados} creados")
 
             # 4. Usar el total e IGV que vienen del frontend
-            # IMPORTANTE: El frontend ya calcula correctamente el total e IGV (con o sin IGV según corresponda)
-            # NO debemos recalcular, solo usar los valores que envía el frontend
+            # IMPORTANTE: El frontend ya calcula correctamente el total e IGV
+            # - Si productos son CON IGV: igv = 0 (IGV incluido en el total)
+            # - Si productos son SIN IGV o MIXTO: igv = monto calculado (ej: 420.70)
             total_orden = round(float(request.total), 2)
-            igv_orden = round(float(request.igv), 2)
+            igv_orden = round(float(request.igv), 2) if request.igv is not None else 0.0
 
             logger.info(f"Total recibido del frontend: {total_orden}, IGV: {igv_orden}")
 
@@ -342,7 +343,7 @@ class ActualizarOrdenCompra:
                 moneda=request.moneda if request.moneda else '',
                 pago=request.pago if request.pago else '',
                 entrega=request.entrega if request.entrega else '',
-                igv=Decimal(str(request.igv)),
+                igv=Decimal(str(request.igv)) if request.igv is not None else Decimal('0'),
                 total=Decimal(str(request.total))
             )
 

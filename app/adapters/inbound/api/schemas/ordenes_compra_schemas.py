@@ -94,7 +94,7 @@ class ActualizarOrdenCompraRequest(BaseModel):
   rutaS3Antigua: Optional[str] = Field(None, description="URL del archivo S3 a eliminar")
   numeroOc: str = Field(..., description="Número de OC (correlativo) obtenido del GET")
   consorcio: bool = Field(False, description="Si es consorcio")
-  igv: float = Field(..., description="IGV de la OC (monto del IGV)")
+  igv: Optional[float] = Field(None, description="IGV de la OC (monto del IGV). Si no se envía, se calcula automáticamente")
   total: float = Field(..., description="Total de la OC")
   # Datos del proveedor para regenerar Excel
   proveedor: ProveedorOrdenResponse = Field(..., description="Datos del proveedor")

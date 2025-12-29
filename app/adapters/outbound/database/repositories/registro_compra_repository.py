@@ -64,33 +64,21 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             RegistroCompraModel: Registro ACTIVO encontrado o None
         """
         try:
-            # Obtener TODOS los registros via join con registro_compra_ordenes -> ordenes_compra
-            query = self.db.query(RegistroCompraModel).join(
-                RegistroCompraOrdenModel,
-                RegistroCompraModel.compra_id == RegistroCompraOrdenModel.compra_id
-            ).join(
-                OrdenesCompraModel,
-                RegistroCompraOrdenModel.id_orden == OrdenesCompraModel.id_orden
-            ).filter(
-                OrdenesCompraModel.id_cotizacion == id_cotizacion
-            )
-
-            # Filtrar por versión si se proporciona
-            if id_cotizacion_versiones is not None:
-                query = query.filter(
-                    OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
+            # Búsqueda directa por FK cotizacion_version_id (mucho más eficiente)
+            if id_cotizacion_versiones is None:
+                logger.warning(
+                    f"⚠️ id_cotizacion_versiones es None para cotización {id_cotizacion}. "
+                    f"No se puede buscar registro sin versión específica."
                 )
+                return None
 
-            # Obtener TODOS los registros (sin filtrar por activo aún)
-            registros_todos = query.distinct().all()
+            registros_activos = self.db.query(RegistroCompraModel).filter(
+                RegistroCompraModel.cotizacion_version_id == id_cotizacion_versiones,
+                RegistroCompraModel.activo.is_(True),
+                RegistroCompraModel.desactivado_manualmente.is_(False)
+            ).all()
 
-            # Filtrar por registros ACTIVOS (activo=True AND desactivado_manualmente=False)
-            registros_activos = [
-                r for r in registros_todos
-                if r.activo and not r.desactivado_manualmente
-            ]
-
-            version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+            version_info = f" versión {id_cotizacion_versiones}"
 
             # VALIDACIÓN DEFENSIVA: Detectar estado inconsistente (múltiples registros activos)
             if len(registros_activos) > 1:
@@ -103,6 +91,26 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 # Usar el más reciente (último creado)
                 registro = max(registros_activos, key=lambda r: r.compra_id)
                 logger.info(f"Usando el registro más reciente: compra_id={registro.compra_id}")
+
+                # DESACTIVAR los registros viejos para corregir la inconsistencia
+                registros_viejos = [r for r in registros_activos if r.compra_id != registro.compra_id]
+                if registros_viejos:
+                    ids_viejos = [r.compra_id for r in registros_viejos]
+                    logger.warning(f"🔧 AUTOCORRECCIÓN: Desactivando {len(registros_viejos)} registros viejos: {ids_viejos}")
+
+                    # Desactivar en bulk
+                    self.db.query(RegistroCompraModel).filter(
+                        RegistroCompraModel.compra_id.in_(ids_viejos)
+                    ).update(
+                        {
+                            RegistroCompraModel.activo: False,
+                            RegistroCompraModel.fecha_actualizacion: datetime.now()
+                        },
+                        synchronize_session=False
+                    )
+                    self.db.flush()
+                    logger.info(f"✅ Registros viejos desactivados correctamente")
+
                 return registro
 
             elif len(registros_activos) == 1:
@@ -227,6 +235,11 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         """
         Guarda o actualiza un registro de compra con sus órdenes
 
+        IMPORTANTE: SIEMPRE actualiza si existe, NUNCA crea duplicados
+        1. Busca TODOS los registros activos para esta cotización
+        2. Si hay duplicados, desactiva todos menos el más reciente
+        3. Actualiza el registro existente o crea uno nuevo
+
         Args:
             id_cotizacion: ID de la cotización
             ordenes: Lista de órdenes de compra
@@ -243,17 +256,80 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             # Inicializar servicio de auditoría
             auditoria_service = RegistroCompraAuditoriaService(self.db)
 
-            # Buscar registro existente
-            registro = self.obtener_por_cotizacion(id_cotizacion, id_cotizacion_versiones)
+            # PASO 1: Buscar registro por cotizacion_version_id (búsqueda directa, sin JOINs)
+            # IMPORTANTE: Usar el FK cotizacion_version_id para precisión
+            # Una cotización puede tener múltiples versiones, cada una con su registro de compra
 
-            # Guardar estado anterior para auditoría
+            if id_cotizacion_versiones is None:
+                logger.error(
+                    f"❌ id_cotizacion_versiones es None para cotización {id_cotizacion}. "
+                    f"Este campo es OBLIGATORIO para evitar inconsistencias."
+                )
+                raise ValueError(f"id_cotizacion_versiones es obligatorio para cotización {id_cotizacion}")
+
+            # Búsqueda directa por FK cotizacion_version_id
+            registros_existentes = self.db.query(RegistroCompraModel).filter(
+                RegistroCompraModel.cotizacion_version_id == id_cotizacion_versiones,
+                RegistroCompraModel.activo.is_(True),
+                RegistroCompraModel.desactivado_manualmente.is_(False)
+            ).all()
+
+            logger.info(
+                f"Buscando registro por cotizacion_version_id={id_cotizacion_versiones}. "
+                f"Encontrados: {len(registros_existentes)}"
+            )
+
+            # PASO 2: Si hay duplicados, desactivar todos menos el más reciente
+            if len(registros_existentes) > 1:
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                compra_ids = [r.compra_id for r in registros_existentes]
+                logger.warning(
+                    f"⚠️ DUPLICADOS DETECTADOS: {len(registros_existentes)} registros activos "
+                    f"para cotización {id_cotizacion}{version_info}. IDs: {compra_ids}. "
+                    f"Desactivando duplicados..."
+                )
+                # Ordenar por compra_id (el más alto es el más reciente)
+                registros_existentes.sort(key=lambda r: r.compra_id, reverse=True)
+                registro_activo = registros_existentes[0]
+                registros_viejos = registros_existentes[1:]
+
+                # Desactivar duplicados
+                for r in registros_viejos:
+                    r.activo = False
+                    r.fecha_actualizacion = datetime.now()
+                    logger.info(f"🔧 Desactivando registro duplicado: compra_id={r.compra_id}")
+
+                self.db.flush()
+                registro = registro_activo
+
+            elif len(registros_existentes) == 1:
+                # Caso normal: exactamente 1 registro
+                registro = registros_existentes[0]
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                logger.info(
+                    f"✅ Registro existente encontrado: compra_id={registro.compra_id} "
+                    f"para cotización {id_cotizacion}{version_info}"
+                )
+
+            else:
+                # No existe registro, se creará después
+                registro = None
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                logger.info(f"No existe registro para cotización {id_cotizacion}{version_info}, se creará uno nuevo")
+
+            # PASO 3: Guardar estado anterior para auditoría
             datos_anteriores = None
             ordenes_anteriores = []
             es_actualizacion = False
 
             if registro:
+                # ACTUALIZAR registro existente
                 es_actualizacion = True
-                logger.info(f"Actualizando registro de compra existente para cotización {id_cotizacion}")
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                logger.info(
+                    f"🔄 Actualizando registro de compra existente (compra_id={registro.compra_id}) "
+                    f"para cotización {id_cotizacion}{version_info}"
+                )
 
                 # Guardar datos anteriores para auditoría y detección de cambios
                 datos_anteriores = {
@@ -297,10 +373,12 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 ).delete()
 
             else:
-                logger.info(f"Creando nuevo registro de compra para cotización {id_cotizacion}")
+                # CREAR nuevo registro (solo si no existe ninguno)
+                version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
+                logger.info(f"🆕 Creando nuevo registro de compra para cotización {id_cotizacion}{version_info}")
 
-                # Crear nuevo registro
                 registro = RegistroCompraModel(
+                    cotizacion_version_id=id_cotizacion_versiones,  # ← IMPORTANTE: FK a cotizaciones_versiones
                     moneda=datos_calculados['moneda'],
                     monto_total_dolar=datos_calculados['monto_total_dolar'],
                     tipo_cambio_sunat=datos_calculados['tipo_cambio_sunat'],
@@ -314,6 +392,10 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 )
                 self.db.add(registro)
                 self.db.flush()  # Obtener ID
+                logger.info(
+                    f"✅ Nuevo registro creado: compra_id={registro.compra_id}, "
+                    f"cotizacion_version_id={id_cotizacion_versiones}"
+                )
 
             # Crear detalles en registro_compra_ordenes con relación a las órdenes
             for orden in ordenes:
@@ -353,7 +435,14 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
 
             # Commit atómico de todas las operaciones (registro, detalles, auditoría)
             self.db.commit()
-            logger.info(f"✅ Registro de compra guardado exitosamente: ID {registro.compra_id}")
+
+            accion = "actualizado" if es_actualizacion else "creado"
+            logger.info(
+                f"✅ Registro de compra {accion} exitosamente: "
+                f"compra_id={registro.compra_id}, "
+                f"cotización={id_cotizacion}, "
+                f"total_soles={datos_calculados['monto_total_soles']}"
+            )
 
             return registro
 
