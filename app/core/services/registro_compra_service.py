@@ -75,17 +75,28 @@ class RegistroCompraService:
 
         logger.info(f"Total PEN: {total_pen}, Total USD: {total_usd}")
 
-        # Convertir PEN a USD
-        total_usd_convertido = Decimal('0')
-        if total_pen > 0:
+        # Calcular montos según el tipo de órdenes
+        # IMPORTANTE: Evitar conversiones innecesarias para prevenir errores de redondeo
+
+        if total_pen > 0 and total_usd > 0:
+            # CASO 1: MIX - Hay órdenes en ambas monedas
+            # Convertir PEN a USD, sumar, y reconvertir a PEN
             total_usd_convertido = total_pen / tipo_cambio_sunat
-            logger.info(f"PEN convertido a USD: {total_usd_convertido}")
+            monto_total_dolar = total_usd + total_usd_convertido
+            monto_total_soles = monto_total_dolar * tipo_cambio_sunat
+            logger.info(f"Mix de monedas - PEN convertido a USD: {total_usd_convertido}, Total USD: {monto_total_dolar}")
 
-        # Sumar todo en USD
-        monto_total_dolar = total_usd + total_usd_convertido
+        elif total_usd > 0:
+            # CASO 2: SOLO USD - Convertir a PEN
+            monto_total_dolar = total_usd
+            monto_total_soles = total_usd * tipo_cambio_sunat
+            logger.info(f"Solo USD - Total USD: {monto_total_dolar}, convertido a PEN: {monto_total_soles}")
 
-        # Convertir total USD a PEN
-        monto_total_soles = monto_total_dolar * tipo_cambio_sunat
+        else:
+            # CASO 3: SOLO PEN - Usar directamente (SIN CONVERSIÓN)
+            monto_total_soles = total_pen
+            monto_total_dolar = total_pen / tipo_cambio_sunat if tipo_cambio_sunat > 0 else Decimal('0')
+            logger.info(f"Solo PEN - Total PEN: {monto_total_soles}, equivalente USD: {monto_total_dolar}")
 
         # Quitar IGV (18%) - dividir entre 1.18
         monto_sin_igv = monto_total_soles / self.IGV_PERCENTAGE

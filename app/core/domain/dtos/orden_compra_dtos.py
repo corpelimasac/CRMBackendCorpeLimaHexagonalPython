@@ -204,6 +204,8 @@ class DatosOrdenExcel:
     moneda: str
     pago: str
     entrega: str
+    igv: Optional[Decimal] = None
+    total: Optional[Decimal] = None
 
 
 @dataclass

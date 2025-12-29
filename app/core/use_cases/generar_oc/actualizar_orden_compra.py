@@ -246,28 +246,24 @@ class ActualizarOrdenCompra:
             logger.info(f"Resumen de productos: {productos_eliminados} eliminados, "
                        f"{productos_actualizados} actualizados, {productos_creados} creados")
 
-            # 4. Calcular el nuevo total de la orden
-            # IMPORTANTE: El total es simplemente la suma de los precio_total de todos los productos
-            # Los productos ya vienen con su precio correcto desde el frontend (con o sin IGV según corresponda)
-            # NO debemos agregar IGV adicional, solo sumar los totales
-            from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
-            detalles_actuales = self.db.query(OrdenesCompraDetallesModel).filter(
-                OrdenesCompraDetallesModel.id_orden == request.idOrden
-            ).all()
+            # 4. Usar el total e IGV que vienen del frontend
+            # IMPORTANTE: El frontend ya calcula correctamente el total e IGV (con o sin IGV según corresponda)
+            # NO debemos recalcular, solo usar los valores que envía el frontend
+            total_orden = round(float(request.total), 2)
+            igv_orden = round(float(request.igv), 2)
 
-            # Calcular total sumando TODOS los precio_total (sin lógica de IGV adicional)
-            total_orden = sum(detalle.precio_total for detalle in detalles_actuales)
-            total_orden = round(total_orden, 2)
-
-            logger.info(f"Total calculado desde detalles: {total_orden}")
+            logger.info(f"Total recibido del frontend: {total_orden}, IGV: {igv_orden}")
 
             monto_nuevo = float(total_orden)
 
-            # Actualizar el total en la orden (SIN COMMIT - usamos la misma sesión self.db)
+            # Actualizar el total e IGV en la orden (SIN COMMIT - usamos la misma sesión self.db)
             from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
             self.db.query(OrdenesCompraModel).filter(
                 OrdenesCompraModel.id_orden == request.idOrden
-            ).update({"total": str(total_orden)})
+            ).update({
+                "total": str(total_orden),
+                "igv": str(igv_orden)
+            })
 
             # 5. Registrar auditoría de la actualización con nuevo servicio
             # Obtener nombres de proveedor y contacto para auditoría
@@ -345,7 +341,9 @@ class ActualizarOrdenCompra:
                 fecha=fecha_actual,
                 moneda=request.moneda if request.moneda else '',
                 pago=request.pago if request.pago else '',
-                entrega=request.entrega if request.entrega else ''
+                entrega=request.entrega if request.entrega else '',
+                igv=Decimal(str(request.igv)),
+                total=Decimal(str(request.total))
             )
 
             # Preparar datos del proveedor (viene del request)
