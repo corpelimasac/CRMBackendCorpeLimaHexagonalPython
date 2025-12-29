@@ -118,34 +118,15 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
             new_correlative = f"OC-{new_number:06d}-{current_year}"
             logger.debug(f"Generado correlativo: {new_correlative}")
 
-            # Calcular total de la orden considerando el IGV de cada producto individual
+            # USAR el total que viene del frontend (NO recalcular)
+            # El frontend ya maneja toda la lógica de cálculo correctamente (CON IGV, SIN IGV, mixto)
+            # Solo necesitamos redondear el valor que viene
             try:
-                items = getattr(order, 'items', [])
-
-                # Separar productos por tipo de IGV
-                subtotal_con_igv = 0.0
-                subtotal_sin_igv = 0.0
-
-                for item in items:
-                    precio_total_item = float(item.p_total)
-                    igv_item = getattr(item, 'igv', 'CON IGV').upper()
-
-                    if igv_item == 'SIN IGV':
-                        subtotal_sin_igv += precio_total_item
-                    else:
-                        subtotal_con_igv += precio_total_item
-
-                # Si hay productos SIN IGV, agregar 18% de IGV solo a esos
-                if subtotal_sin_igv > 0:
-                    total_calculado = round(subtotal_con_igv + subtotal_sin_igv + (subtotal_sin_igv * 0.18), 2)
-                else:
-                    # Todos los productos ya tienen IGV incluido
-                    total_calculado = round(subtotal_con_igv, 2)
-
-                logger.debug(f"Total calculado: CON IGV={subtotal_con_igv}, SIN IGV={subtotal_sin_igv}, TOTAL={total_calculado}")
-            except (AttributeError, TypeError, ValueError) as e:
-                logger.warning(f"Error al calcular total, usando total de la orden: {e}")
                 total_calculado = round(float(order.total), 2) if getattr(order, 'total', None) is not None else 0.0
+                logger.debug(f"Total recibido del frontend: {total_calculado}")
+            except (AttributeError, TypeError, ValueError) as e:
+                logger.error(f"Error al obtener total de la orden: {e}")
+                total_calculado = 0.0
 
             db_order = OrdenesCompraModel(
                 id_cotizacion=order.id_cotizacion,

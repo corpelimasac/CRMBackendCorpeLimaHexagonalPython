@@ -247,32 +247,19 @@ class ActualizarOrdenCompra:
                        f"{productos_actualizados} actualizados, {productos_creados} creados")
 
             # 4. Calcular el nuevo total de la orden
-            # Obtener todos los detalles actuales con su IGV
+            # IMPORTANTE: El total es simplemente la suma de los precio_total de todos los productos
+            # Los productos ya vienen con su precio correcto desde el frontend (con o sin IGV según corresponda)
+            # NO debemos agregar IGV adicional, solo sumar los totales
             from app.adapters.outbound.database.models.ordenes_compra_detalles_model import OrdenesCompraDetallesModel
             detalles_actuales = self.db.query(OrdenesCompraDetallesModel).filter(
                 OrdenesCompraDetallesModel.id_orden == request.idOrden
             ).all()
 
-            # Separar productos por tipo de IGV
-            productos_con_igv = []
-            productos_sin_igv = []
-            for detalle in detalles_actuales:
-                if detalle.igv and detalle.igv.upper() == 'SIN IGV':
-                    productos_sin_igv.append(detalle)
-                else:
-                    productos_con_igv.append(detalle)
+            # Calcular total sumando TODOS los precio_total (sin lógica de IGV adicional)
+            total_orden = sum(detalle.precio_total for detalle in detalles_actuales)
+            total_orden = round(total_orden, 2)
 
-            # Calcular subtotales
-            subtotal_con_igv = sum(detalle.precio_total for detalle in productos_con_igv)
-            subtotal_sin_igv = sum(detalle.precio_total for detalle in productos_sin_igv)
-
-            # Si hay productos mezclados o todos son SIN IGV, agregar IGV al total
-            if productos_sin_igv:
-                # Agregar 18% de IGV a los productos que vienen sin IGV
-                total_orden = round(subtotal_con_igv + subtotal_sin_igv + (subtotal_sin_igv * 0.18), 2)
-            else:
-                # Todos los productos ya tienen IGV incluido
-                total_orden = round(subtotal_con_igv, 2)
+            logger.info(f"Total calculado desde detalles: {total_orden}")
 
             monto_nuevo = float(total_orden)
 
