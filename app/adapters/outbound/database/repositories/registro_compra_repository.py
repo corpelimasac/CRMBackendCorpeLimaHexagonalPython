@@ -1,6 +1,6 @@
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import List
 
 from sqlalchemy.orm import Session
 
@@ -12,6 +12,34 @@ from app.core.ports.repositories.registro_compra_repository import RegistroCompr
 logger = logging.getLogger(__name__)
 
 
+def _detectar_cambios_compra(datos_anteriores: dict, datos_nuevos: dict) -> bool:
+    """
+    Detecta si hubo cambios en los campos relevantes del registro de compra
+
+    Args:
+        datos_anteriores: Diccionario con datos anteriores
+        datos_nuevos: Diccionario con datos nuevos
+
+    Returns:
+        bool: True si hubo cambios, False si no
+    """
+    cambio_moneda = datos_anteriores.get('moneda') != datos_nuevos.get('moneda')
+    cambio_monto_dolar = datos_anteriores.get('monto_total_dolar') != datos_nuevos.get('monto_total_dolar')
+    cambio_monto_soles = datos_anteriores.get('monto_total_soles') != datos_nuevos.get('monto_total_soles')
+    cambio_monto_sin_igv = datos_anteriores.get('monto_sin_igv') != datos_nuevos.get('monto_sin_igv')
+
+    if cambio_moneda:
+        logger.info(f"Cambio detectado - Moneda: {datos_anteriores.get('moneda')} → {datos_nuevos.get('moneda')}")
+    if cambio_monto_dolar:
+        logger.info(f"Cambio detectado - Monto Dólar: {datos_anteriores.get('monto_total_dolar')} → {datos_nuevos.get('monto_total_dolar')}")
+    if cambio_monto_soles:
+        logger.info(f"Cambio detectado - Monto Soles: {datos_anteriores.get('monto_total_soles')} → {datos_nuevos.get('monto_total_soles')}")
+    if cambio_monto_sin_igv:
+        logger.info(f"Cambio detectado - Monto Sin IGV: {datos_anteriores.get('monto_sin_igv')} → {datos_nuevos.get('monto_sin_igv')}")
+
+    return cambio_moneda or cambio_monto_dolar or cambio_monto_soles or cambio_monto_sin_igv
+
+
 class RegistroCompraRepository(RegistroCompraRepositoryPort):
     """
     Implementación del repositorio de registro de compras
@@ -20,7 +48,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
     def __init__(self, db: Session):
         self.db = db
 
-    def obtener_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> Optional[RegistroCompraModel]:
+    def obtener_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> RegistroCompraModel | None:
         """
         Obtiene el registro de compra ACTIVO asociado a una cotización y versión
         usando join con ordenes_compra
@@ -92,8 +120,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al obtener registro de compra: {e}")
             raise
 
-    def obtener_registro_huerfano_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> type[
-                                                                                                                       RegistroCompraModel] | None:
+    def obtener_registro_huerfano_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> RegistroCompraModel | None:
         """
         Busca un registro de compra huérfano (sin órdenes activas) para una cotización.
 
@@ -157,8 +184,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al buscar registro huérfano: {e}", exc_info=True)
             raise
 
-    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> list[
-        type[OrdenesCompraModel]]:
+    def obtener_ordenes_por_cotizacion(self, id_cotizacion: int, id_cotizacion_versiones: int = None) -> list[OrdenesCompraModel]:
         """
         Obtiene todas las órdenes de compra de una cotización y versión específica
 
@@ -180,7 +206,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 query = query.filter(
                     OrdenesCompraModel.id_cotizacion_versiones == id_cotizacion_versiones
                 )
-            
+
             ordenes = query.all()
 
             version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
@@ -232,10 +258,10 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 # Guardar datos anteriores para auditoría y detección de cambios
                 datos_anteriores = {
                     'moneda': registro.moneda,
-                    'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
-                    'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
-                    'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
-                    'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
+                    'monto_total_dolar': registro.monto_total_dolar if registro.monto_total_dolar is not None else 0,
+                    'tipo_cambio_sunat': registro.tipo_cambio_sunat if registro.tipo_cambio_sunat is not None else 0,
+                    'monto_total_soles': registro.monto_total_soles if registro.monto_total_soles is not None else 0,
+                    'monto_sin_igv': registro.monto_sin_igv if registro.monto_sin_igv is not None else 0,
                     'tipo_empresa': registro.tipo_empresa
                 }
 
@@ -258,7 +284,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 registro.fecha_actualizacion = datetime.now()
 
                 # Detectar cambios comparando valores anteriores con nuevos
-                hay_cambios = self._detectar_cambios_compra(datos_anteriores, datos_calculados)
+                hay_cambios = _detectar_cambios_compra(datos_anteriores, datos_calculados)
                 if hay_cambios:
                     registro.cambio_compra = True
                     logger.info("✅ Se detectaron cambios en el registro de compra - cambio_compra=True")
@@ -283,6 +309,7 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                     tipo_empresa=datos_calculados['tipo_empresa'],
                     activo=True,
                     desactivado_manualmente=False,
+                    cambio_compra=False,
                     fecha_creacion=datetime.now()
                 )
                 self.db.add(registro)
@@ -375,57 +402,12 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
 
         try:
-            # Obtener datos del registro
-            registro = self.db.query(RegistroCompraModel).filter(
-                RegistroCompraModel.compra_id == compra_id
-            ).first()
+            # Obtener datos del registro usando el método auxiliar
+            registro, datos_anteriores, ordenes, id_cotizacion, id_cotizacion_versiones = \
+                self._obtener_datos_registro_para_auditoria(compra_id)
 
             if not registro:
-                logger.warning(f"Registro de compra {compra_id} no encontrado")
                 return
-
-            # Obtener órdenes asociadas a través de registro_compra_ordenes
-            ordenes_detalle = self.db.query(RegistroCompraOrdenModel).filter(
-                RegistroCompraOrdenModel.compra_id == compra_id
-            ).all()
-
-            # Si hay órdenes asociadas, obtenerlas para la auditoría
-            ordenes = []
-            id_cotizacion = None
-            id_cotizacion_versiones = None
-
-            if ordenes_detalle:
-                ordenes_ids = [o.id_orden for o in ordenes_detalle]
-                if ordenes_ids:
-                    ordenes = self.db.query(OrdenesCompraModel).filter(
-                        OrdenesCompraModel.id_orden.in_(ordenes_ids)
-                    ).all()
-
-                # Obtener cotización desde la primera orden
-                if ordenes:
-                    id_cotizacion = ordenes[0].id_cotizacion
-                    id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones
-
-            # Guardar datos completos para auditoría
-            datos_anteriores = {
-                'compra_id': compra_id,
-                'moneda': registro.moneda,
-                'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
-                'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
-                'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
-                'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
-                'tipo_empresa': registro.tipo_empresa,
-                'cantidad_ordenes': len(ordenes),
-                'ordenes': [
-                    {
-                        'id_orden': o.id_orden,
-                        'numero_oc': o.correlative,
-                        'monto': float(o.total) if o.total else 0,
-                        'moneda': o.moneda
-                    }
-                    for o in ordenes
-                ]
-            }
 
             # 1. Registrar auditoría ANTES de desactivar (dentro de la misma transacción)
             auditoria_service = RegistroCompraAuditoriaService(self.db)
@@ -466,57 +448,12 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
         from app.core.services.registro_compra_auditoria_service import RegistroCompraAuditoriaService
 
         try:
-            # Obtener datos antes de eliminar para auditoría
-            registro = self.db.query(RegistroCompraModel).filter(
-                RegistroCompraModel.compra_id == compra_id
-            ).first()
+            # Obtener datos antes de eliminar para auditoría usando el método auxiliar
+            registro, datos_anteriores, ordenes, id_cotizacion, id_cotizacion_versiones = \
+                self._obtener_datos_registro_para_auditoria(compra_id)
 
             if not registro:
-                logger.warning(f"Registro de compra {compra_id} no encontrado")
                 return
-
-            # Obtener órdenes asociadas a través de registro_compra_ordenes
-            ordenes_detalle = self.db.query(RegistroCompraOrdenModel).filter(
-                RegistroCompraOrdenModel.compra_id == compra_id
-            ).all()
-
-            # Si hay órdenes asociadas, obtenerlas para la auditoría
-            ordenes = []
-            id_cotizacion = None
-            id_cotizacion_versiones = None
-
-            if ordenes_detalle:
-                ordenes_ids = [o.id_orden for o in ordenes_detalle]
-                if ordenes_ids:
-                    ordenes = self.db.query(OrdenesCompraModel).filter(
-                        OrdenesCompraModel.id_orden.in_(ordenes_ids)
-                    ).all()
-
-                # Obtener cotización desde la primera orden
-                if ordenes:
-                    id_cotizacion = ordenes[0].id_cotizacion
-                    id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones
-
-            # Guardar datos completos para auditoría
-            datos_anteriores = {
-                'compra_id': compra_id,
-                'moneda': registro.moneda,
-                'monto_total_dolar': float(registro.monto_total_dolar) if registro.monto_total_dolar else 0,
-                'tipo_cambio_sunat': float(registro.tipo_cambio_sunat) if registro.tipo_cambio_sunat else 0,
-                'monto_total_soles': float(registro.monto_total_soles) if registro.monto_total_soles else 0,
-                'monto_sin_igv': float(registro.monto_sin_igv) if registro.monto_sin_igv else 0,
-                'tipo_empresa': registro.tipo_empresa,
-                'cantidad_ordenes': len(ordenes),
-                'ordenes': [
-                    {
-                        'id_orden': o.id_orden,
-                        'numero_oc': o.correlative,
-                        'monto': float(o.total) if o.total else 0,
-                        'moneda': o.moneda
-                    }
-                    for o in ordenes
-                ]
-            }
 
             # 1. Registrar auditoría ANTES de eliminar (dentro de la misma transacción)
             auditoria_service = RegistroCompraAuditoriaService(self.db)
@@ -549,29 +486,74 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
             logger.error(f"Error al eliminar registro de compra {compra_id}: {e}", exc_info=True)
             raise
 
-    def _detectar_cambios_compra(self, datos_anteriores: dict, datos_nuevos: dict) -> bool:
+    def _obtener_datos_registro_para_auditoria(self, compra_id: int) -> tuple:
         """
-        Detecta si hubo cambios en los campos relevantes del registro de compra
+        Obtiene todos los datos de un registro de compra necesarios para auditoría.
+
+        Este método centraliza la lógica de obtención de datos que se usa tanto en
+        desactivar_registro como en eliminar_registro.
 
         Args:
-            datos_anteriores: Diccionario con datos anteriores
-            datos_nuevos: Diccionario con datos nuevos
+            compra_id: ID del registro de compra
 
         Returns:
-            bool: True si hubo cambios, False si no
+            Tupla con:
+            - registro: Objeto RegistroCompraModel o None
+            - datos_anteriores: Diccionario con datos del registro
+            - ordenes: Lista de órdenes asociadas
+            - id_cotizacion: ID de cotización (de la primera orden) o None
+            - id_cotizacion_versiones: ID de versión de cotización o None
         """
-        cambio_moneda = datos_anteriores.get('moneda') != datos_nuevos.get('moneda')
-        cambio_monto_dolar = datos_anteriores.get('monto_total_dolar') != datos_nuevos.get('monto_total_dolar')
-        cambio_monto_soles = datos_anteriores.get('monto_total_soles') != datos_nuevos.get('monto_total_soles')
-        cambio_monto_sin_igv = datos_anteriores.get('monto_sin_igv') != datos_nuevos.get('monto_sin_igv')
+        # Obtener datos del registro
+        registro = self.db.query(RegistroCompraModel).filter(
+            RegistroCompraModel.compra_id == compra_id
+        ).first()
 
-        if cambio_moneda:
-            logger.info(f"Cambio detectado - Moneda: {datos_anteriores.get('moneda')} → {datos_nuevos.get('moneda')}")
-        if cambio_monto_dolar:
-            logger.info(f"Cambio detectado - Monto Dólar: {datos_anteriores.get('monto_total_dolar')} → {datos_nuevos.get('monto_total_dolar')}")
-        if cambio_monto_soles:
-            logger.info(f"Cambio detectado - Monto Soles: {datos_anteriores.get('monto_total_soles')} → {datos_nuevos.get('monto_total_soles')}")
-        if cambio_monto_sin_igv:
-            logger.info(f"Cambio detectado - Monto Sin IGV: {datos_anteriores.get('monto_sin_igv')} → {datos_nuevos.get('monto_sin_igv')}")
+        if not registro:
+            logger.warning(f"Registro de compra {compra_id} no encontrado")
+            return None, {}, [], None, None
 
-        return cambio_moneda or cambio_monto_dolar or cambio_monto_soles or cambio_monto_sin_igv
+        # Obtener órdenes asociadas a través de registro_compra_ordenes
+        ordenes_detalle = self.db.query(RegistroCompraOrdenModel).filter(
+            RegistroCompraOrdenModel.compra_id == compra_id
+        ).all()
+
+        # Si hay órdenes asociadas, obtenerlas para la auditoría
+        ordenes = []
+        id_cotizacion = None
+        id_cotizacion_versiones = None
+
+        if ordenes_detalle:
+            ordenes_ids = [o.id_orden for o in ordenes_detalle]
+            if ordenes_ids:
+                ordenes = self.db.query(OrdenesCompraModel).filter(
+                    OrdenesCompraModel.id_orden.in_(ordenes_ids)
+                ).all()
+
+            # Obtener cotización desde la primera orden
+            if ordenes:
+                id_cotizacion = ordenes[0].id_cotizacion
+                id_cotizacion_versiones = ordenes[0].id_cotizacion_versiones
+
+        # Guardar datos completos para auditoría
+        datos_anteriores = {
+            'compra_id': compra_id,
+            'moneda': registro.moneda,
+            'monto_total_dolar': registro.monto_total_dolar if registro.monto_total_dolar is not None else 0,
+            'tipo_cambio_sunat': registro.tipo_cambio_sunat if registro.tipo_cambio_sunat is not None else 0,
+            'monto_total_soles': registro.monto_total_soles if registro.monto_total_soles is not None else 0,
+            'monto_sin_igv': registro.monto_sin_igv if registro.monto_sin_igv is not None else 0,
+            'tipo_empresa': registro.tipo_empresa,
+            'cantidad_ordenes': len(ordenes),
+            'ordenes': [
+                {
+                    'id_orden': o.id_orden,
+                    'numero_oc': o.correlative,
+                    'monto': o.total if o.total is not None else 0,
+                    'moneda': o.moneda
+                }
+                for o in ordenes
+            ]
+        }
+
+        return registro, datos_anteriores, ordenes, id_cotizacion, id_cotizacion_versiones

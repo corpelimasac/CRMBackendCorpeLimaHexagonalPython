@@ -3,7 +3,6 @@ Servicio de cálculo de montos consolidados para registro de compras
 """
 from typing import List
 from decimal import Decimal, ROUND_HALF_UP
-from datetime import date
 from app.adapters.outbound.database.models.ordenes_compra_model import OrdenesCompraModel
 import logging
 
