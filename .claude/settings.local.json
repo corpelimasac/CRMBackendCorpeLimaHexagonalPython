@@ -21,7 +21,8 @@
       "mcp__mysql-dev__mysql_query",
       "mcp__mysql-prod__mysql_describe_table",
       "Bash(cat:*)",
-      "mcp__mysql-prod__mysql_show_create_table"
+      "mcp__mysql-prod__mysql_show_create_table",
+      "mcp__mysql-prod__mysql_tables"
     ],
     "deny": [],
     "ask": []

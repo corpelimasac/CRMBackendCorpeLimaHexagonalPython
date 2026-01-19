@@ -676,8 +676,20 @@ class OrdenesCompraRepository(OrdenesCompraRepositoryPort):
 
             logger.info(f"Orden {id_orden} y sus detalles marcados para eliminación.")
 
-            # Si la orden pertenecía a un registro de compra, recalcular o eliminar el registro
+            # Si la orden pertenecía a un registro de compra, marcar cambio_compra=True y recalcular/desactivar
             if compra_id:
+                from app.adapters.outbound.database.models.registro_compra_model import RegistroCompraModel
+
+                # Marcar cambio_compra=True porque se eliminó una orden
+                registro = self.db.query(RegistroCompraModel).filter(
+                    RegistroCompraModel.compra_id == compra_id
+                ).first()
+
+                if registro:
+                    registro.cambio_compra = True
+                    registro.fecha_actualizacion = datetime.now()
+                    logger.info(f"✅ Marcado cambio_compra=True en registro {compra_id} por eliminación de orden {id_orden}")
+
                 # Verificar si quedan otras órdenes en el mismo registro de compra
                 ordenes_restantes = self.db.query(RegistroCompraOrdenModel).filter(
                     RegistroCompraOrdenModel.compra_id == compra_id
