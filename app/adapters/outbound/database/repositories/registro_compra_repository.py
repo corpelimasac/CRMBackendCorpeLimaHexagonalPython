@@ -373,9 +373,39 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                 ).delete()
 
             else:
-                # CREAR nuevo registro (solo si no existe ninguno)
+                # CREAR nuevo registro (solo si no existe ninguno activo)
                 version_info = f" versión {id_cotizacion_versiones}" if id_cotizacion_versiones else ""
                 logger.info(f"🆕 Creando nuevo registro de compra para cotización {id_cotizacion}{version_info}")
+
+                # FIX: Buscar registro ANTERIOR (inactivo) para detectar cambios
+                # Esto es necesario cuando el registro anterior fue desactivado y se crea uno nuevo
+                registro_anterior_inactivo = self.db.query(RegistroCompraModel).filter(
+                    RegistroCompraModel.cotizacion_version_id == id_cotizacion_versiones,
+                    RegistroCompraModel.activo.is_(False)
+                ).order_by(RegistroCompraModel.compra_id.desc()).first()
+
+                hay_cambios_con_anterior = False
+                if registro_anterior_inactivo:
+                    logger.info(
+                        f"📍 Encontrado registro anterior INACTIVO: compra_id={registro_anterior_inactivo.compra_id}. "
+                        f"Comparando montos para detectar cambios..."
+                    )
+                    # Obtener datos del registro anterior para comparar
+                    datos_registro_anterior = {
+                        'moneda': registro_anterior_inactivo.moneda,
+                        'monto_total_dolar': registro_anterior_inactivo.monto_total_dolar if registro_anterior_inactivo.monto_total_dolar is not None else 0,
+                        'monto_total_soles': registro_anterior_inactivo.monto_total_soles if registro_anterior_inactivo.monto_total_soles is not None else 0,
+                        'monto_sin_igv': registro_anterior_inactivo.monto_sin_igv if registro_anterior_inactivo.monto_sin_igv is not None else 0,
+                    }
+                    # Detectar cambios comparando con el registro anterior inactivo
+                    hay_cambios_con_anterior = _detectar_cambios_compra(datos_registro_anterior, datos_calculados)
+                    if hay_cambios_con_anterior:
+                        logger.info(
+                            f"✅ Se detectaron cambios respecto al registro anterior (inactivo compra_id={registro_anterior_inactivo.compra_id}). "
+                            f"El nuevo registro tendrá cambio_compra=True"
+                        )
+                    else:
+                        logger.info("No se detectaron cambios respecto al registro anterior inactivo")
 
                 registro = RegistroCompraModel(
                     cotizacion_version_id=id_cotizacion_versiones,  # ← IMPORTANTE: FK a cotizaciones_versiones
@@ -387,14 +417,15 @@ class RegistroCompraRepository(RegistroCompraRepositoryPort):
                     tipo_empresa=datos_calculados['tipo_empresa'],
                     activo=True,
                     desactivado_manualmente=False,
-                    cambio_compra=False,
+                    cambio_compra=hay_cambios_con_anterior,  # ← FIX: Marcar True si hay cambios vs registro anterior
                     fecha_creacion=datetime.now()
                 )
                 self.db.add(registro)
                 self.db.flush()  # Obtener ID
                 logger.info(
                     f"✅ Nuevo registro creado: compra_id={registro.compra_id}, "
-                    f"cotizacion_version_id={id_cotizacion_versiones}"
+                    f"cotizacion_version_id={id_cotizacion_versiones}, "
+                    f"cambio_compra={hay_cambios_con_anterior}"
                 )
 
             # Crear detalles en registro_compra_ordenes con relación a las órdenes
