@@ -43,3 +43,4 @@ playwright
 redis
 apscheduler
 pytz
+pip-tools
